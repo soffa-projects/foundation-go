@@ -110,8 +110,24 @@ func (r HttpRes) Is(status int) HttpRes {
 	return r
 }
 
-func (r HttpRes) IsConflict() {
+func (r HttpRes) IsConflict() HttpRes {
 	r.az.Expect(r.resp.StatusCode()).To(gomega.Equal(http.StatusConflict))
+	return r
+}
+
+func (r HttpRes) IsBadRequest() HttpRes {
+	r.az.Expect(r.resp.StatusCode()).To(gomega.Equal(http.StatusBadRequest))
+	return r
+}
+
+func (r HttpRes) IsForbidden() HttpRes {
+	r.az.Expect(r.resp.StatusCode()).To(gomega.Equal(http.StatusForbidden))
+	return r
+}
+
+func (r HttpRes) IsUnauthorized() HttpRes {
+	r.az.Expect(r.resp.StatusCode()).To(gomega.Equal(http.StatusUnauthorized))
+	return r
 }
 
 func (r HttpRes) JSON() *JsonMatcher {
