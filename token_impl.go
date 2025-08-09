@@ -9,8 +9,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
-	"github.com/soffa-projects/foundation-go/utils"
 )
 
 type defaultJwtProvider struct {
@@ -67,7 +67,7 @@ func stripPEMHeaders(pemString string) string {
 
 func (p *defaultJwtProvider) Create(cfg CreateJwtConfig) (string, error) {
 	builder := jwt.NewBuilder().
-		JwtID(utils.NewId("")).
+		JwtID(h.NewId("")).
 		Issuer(cfg.Issuer).
 		IssuedAt(time.Now()).
 		Subject(cfg.Subject).

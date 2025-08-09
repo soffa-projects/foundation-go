@@ -70,18 +70,18 @@ func (t *connectionImpl) configure(dir fs.FS) error {
 		dialect string
 	)
 
-	u, err := url.Parse(t.Url)
-	if err != nil {
-		return err
-	}
-
 	if strings.HasPrefix(t.Url, "postgres://") || strings.HasPrefix(t.Url, "postgresql://") {
 		sqldb = sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(t.Url)))
 		db = bun.NewDB(sqldb, pgdialect.New())
 		dialect = "postgres"
+		u, err := url.Parse(t.Url)
+		if err != nil {
+			return err
+		}
+		t.schema = u.Query().Get("schema")
 	} else if strings.HasPrefix(t.Url, "sqlite://") {
 		dialect = "sqlite3"
-		sqliteDSN := "file::memory:?cache=shared"
+		sqliteDSN := strings.Replace(t.Url, "sqlite://", "", 1)
 		sqldb, err = sql.Open(sqliteshim.ShimName, sqliteDSN)
 		if err != nil {
 			log.Fatal("failed to open SQLite database: %v", err)
@@ -94,7 +94,6 @@ func (t *connectionImpl) configure(dir fs.FS) error {
 	}
 	t.db = db
 	t.dialect = dialect
-	t.schema = u.Query().Get("schema")
 
 	return t.migrate(dir)
 }

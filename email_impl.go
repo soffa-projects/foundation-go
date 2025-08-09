@@ -11,8 +11,28 @@ import (
 	"github.com/soffa-projects/foundation-go/log"
 )
 
-type ResendEmailProvider struct {
+type BaseEmailProvider struct {
 	EmailSender
+	hooks map[string]func(msg EmailMessage)
+}
+
+func (p *BaseEmailProvider) On(name string, fn func(msg EmailMessage)) {
+	p.hooks[name] = fn
+}
+
+func (p *BaseEmailProvider) callHook(name string, msg EmailMessage) {
+	fn, ok := p.hooks[name]
+	if !ok {
+		return
+	}
+	fn(msg)
+}
+
+/// ------------------------------------------------------------
+/// ------------------------------------------------------------
+
+type ResendEmailProvider struct {
+	BaseEmailProvider
 	client *resend.Client
 	sender string
 }
@@ -30,6 +50,9 @@ func newResendEmailProvider(apikey string, sender string) EmailSender {
 	return &ResendEmailProvider{
 		client: client,
 		sender: sender,
+		BaseEmailProvider: BaseEmailProvider{
+			hooks: make(map[string]func(msg EmailMessage)),
+		},
 	}
 }
 
@@ -59,6 +82,7 @@ func (p *ResendEmailProvider) Send(msg EmailMessage) error {
 			}
 		}
 	}
+	p.callHook("send", msg)
 	_, err = p.client.Emails.SendWithContext(ctx, params)
 	if err != nil {
 		log.Error("failed to send email: %v", err)
@@ -72,13 +96,16 @@ func (p *ResendEmailProvider) Send(msg EmailMessage) error {
 /// ------------------------------------------------------------
 
 type FakeEmailProvider struct {
-	EmailSender
+	BaseEmailProvider
 	sender string
 }
 
 func newFakeEmailProvider(_ string, sender string) EmailSender {
 	return &FakeEmailProvider{
 		sender: sender,
+		BaseEmailProvider: BaseEmailProvider{
+			hooks: make(map[string]func(msg EmailMessage)),
+		},
 	}
 }
 
@@ -87,9 +114,10 @@ func (p *FakeEmailProvider) Send(msg EmailMessage) error {
 	if err != nil {
 		return err
 	}
+	p.callHook("send", msg)
 	log.Info("email %s send to %s", msg.Subject, msg.To)
 	log.Info("--------------------------------")
-	log.Info("%s", msg.Html)
+	log.Info("%s", msg.Text)
 	log.Info("--------------------------------")
 	return nil
 }
@@ -98,7 +126,10 @@ func (p *FakeEmailProvider) Send(msg EmailMessage) error {
 /// ------------------------------------------------------------
 
 func parseEmailMessage(msg *EmailMessage) error {
-	templateDir := msg.TemplateDir
+	if msg.TemplateFS == nil {
+		return fmt.Errorf("template_dir_required")
+	}
+	templateDir := msg.TemplateFS
 	if msg.Template != "" {
 		tpl, err := template.ParseFS(templateDir, fmt.Sprintf("templates/emails/%s.html", msg.Template))
 		if err != nil {
@@ -110,6 +141,17 @@ func parseEmailMessage(msg *EmailMessage) error {
 			return err
 		}
 		msg.Html = htmlContent.String()
+
+		tpl, err = template.ParseFS(templateDir, fmt.Sprintf("templates/emails/%s.txt", msg.Template))
+		if err != nil {
+			return err
+		}
+		var textContent bytes.Buffer
+		err = tpl.Execute(&textContent, msg.TemplateData)
+		if err != nil {
+			return err
+		}
+		msg.Text = textContent.String()
 	}
 	return nil
 }

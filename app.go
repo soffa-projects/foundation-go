@@ -4,8 +4,8 @@ import (
 	"context"
 	"io/fs"
 
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
-	"github.com/soffa-projects/foundation-go/utils"
 )
 
 type NotificationService interface {
@@ -42,7 +42,7 @@ type Env struct {
 }
 
 func Init(env Env, router Router, features []Feature) App {
-	utils.InitIdGenerator(0)
+	h.InitIdGenerator(0)
 	app := App{
 		Env:    env,
 		Router: router,

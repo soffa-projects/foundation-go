@@ -50,7 +50,7 @@ type Context interface {
 	BadRequest(message string) HttpResponse
 	NotFound(message string) HttpResponse
 	Conflict(message string) HttpResponse
-	Redirect(code int, url string) error
+	Redirect(code int, url string) RedirectResponse
 
 	File(data []byte, contentType string, filename string) HttpResponse
 	Created(output any) HttpResponse
@@ -60,8 +60,10 @@ type Middleware = func(Context) error
 
 type Route struct {
 	Transactional bool
+	Roles         []string
 	Pre           Middleware
 	Handle        func(Context) any
+	Authenticated bool
 }
 type HandlerInit = func(Env) Route
 
@@ -72,6 +74,11 @@ type Authentication struct {
 	Email      string
 }
 
+type RedirectResponse struct {
+	Code int
+	Url  string
+}
+
 type HttpResponse struct {
 	//error
 	Code        int
@@ -80,6 +87,10 @@ type HttpResponse struct {
 	Data        any
 	ContentType string
 	Filename    string
+}
+
+func (e RedirectResponse) Error() string {
+	return fmt.Sprintf("%d - %s", e.Code, e.Url)
 }
 
 func (e HttpResponse) Error() string {

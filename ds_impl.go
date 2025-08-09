@@ -3,10 +3,10 @@ package f
 import (
 	"context"
 	"io/fs"
+	"strings"
 
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
-	"github.com/soffa-projects/foundation-go/utils"
-	"github.com/soffa-projects/foundation-go/utils/dates"
 )
 
 type MultiTenantDataSource struct {
@@ -53,7 +53,7 @@ func (ds *MultiTenantDataSource) init() error {
 			return err
 		}
 		ds.tenants[*tenant.ID] = cnx
-		ds.tenants[tenant.Slug] = cnx
+		ds.tenants[*tenant.Slug] = cnx
 	}
 	return nil
 }
@@ -79,20 +79,20 @@ func (ds *MultiTenantDataSource) CreateTenant(slug string, name string, dbUrl st
 		return nil, TenantAlreadyExistsError{Value: slug}
 	}
 
-	tenantId := utils.NewId("t_")
+	tenantId := h.NewId("t_")
 
 	if dbUrl == "" {
-		dbUrl = utils.AppendParamToUrl(ds.master.DatabaseUrl(), "schema", tenantId)
+		dbUrl = h.AppendParamToUrl(ds.master.DatabaseUrl(), "schema", tenantId)
 	}
 
 	tenant := &TenantEntity{
 		ID:          &tenantId,
-		Slug:        slug,
-		Name:        name,
+		Slug:        h.TrimToNull(slug),
+		Name:        h.TrimToNull(name),
 		DatabaseUrl: dbUrl,
-		Status:      utils.StrPtr("active"),
-		CreatedAt:   dates.NowP(),
-		UpdatedAt:   dates.NowP(),
+		Status:      h.StrPtr("active"),
+		CreatedAt:   h.NowP(),
+		UpdatedAt:   h.NowP(),
 	}
 	cnx, err := ds.newConnection(tenantId, dbUrl)
 	if err != nil {
@@ -112,6 +112,19 @@ func (ds *MultiTenantDataSource) GetTenantList() ([]TenantEntity, error) {
 		return nil, err
 	}
 	return entities, nil
+}
+
+func (ds *MultiTenantDataSource) GetTenant(id string) (*TenantEntity, error) {
+	entity := TenantEntity{}
+	value := strings.ToLower(id)
+	empty, err := ds.master.FindBy(context.Background(), &entity, "slug = ? OR id = ?", value, value)
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return nil, nil
+	}
+	return &entity, nil
 }
 
 func (ds *MultiTenantDataSource) TenantExists(id string) (bool, error) {

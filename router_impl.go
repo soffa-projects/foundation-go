@@ -17,8 +17,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	prettylogger "github.com/rdbell/echo-pretty-logger"
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
-	"github.com/soffa-projects/foundation-go/utils"
 )
 
 const _authKey = "auth"
@@ -85,7 +85,7 @@ func NewEchoRouter(env Env, cfg *RouterConfig) Router {
 						Permission: permission,
 						Email:      email,
 					}
-					c.Set("auth", auth)
+					c.Set(_authKey, auth)
 				}
 			}
 			c.Set(_authTokenKey, authToken)
@@ -243,6 +243,7 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 		// Handle panics and transactions
 		defer func() {
 			if rec := recover(); rec != nil {
+				originalErr := rec.(error)
 				if !r.production {
 					debug.PrintStack()
 					//tracerr.PrintSourceColor(tracerr.Wrap(err))
@@ -252,7 +253,7 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 						log.Warn("db transaction rolled back: %v", err)
 					}
 				}
-				c.Error(formatResponse(c, err))
+				c.Error(formatResponse(c, originalErr))
 			} else {
 				if cnx != nil {
 					if err := cnx.Commit(); err != nil {
@@ -281,6 +282,10 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 			return formatResponse(c, err)
 		}
 
+		if handler.Authenticated && rc.Auth() == nil {
+			return formatResponse(c, HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized"})
+		}
+
 		result := handler.Handle(rc.WithValue(ConnectionKey{}, cnx))
 
 		if result == nil {
@@ -289,7 +294,7 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 
 		// Handle different response types
 		switch v := result.(type) {
-		case HttpResponse, error:
+		case HttpResponse, error, RedirectResponse:
 			return formatResponse(c, v)
 		default:
 			return c.JSON(http.StatusOK, result)
@@ -299,25 +304,33 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 
 func formatResponse(c echo.Context, err any) error {
 
-	switch err := err.(type) {
-	case HttpResponse:
-		break
-	case error:
-		return err
+	if err == nil {
+		log.Error("unexpected empty error -- check that all interfaces have been implemented")
+		return nil
+	}
+
+	if redirect, ok := err.(RedirectResponse); ok {
+		return c.Redirect(redirect.Code, redirect.Url)
+	}
+
+	if _, ok := err.(HttpResponse); !ok {
+		return c.JSON(http.StatusInternalServerError, err)
 	}
 
 	resp := err.(HttpResponse)
 
 	if resp.Code >= 500 {
-		return sendError(c, resp.Code, "err_technical", "err_unexpected_error")
+		log.Error("unexpected error: %v", err)
+		return mapError(c, resp.Code, "err_technical", "err_unexpected_error")
 	}
 
 	if resp.Code >= 400 {
-		return sendError(c, resp.Code, "err_functional", resp.Data)
+		log.Error("functional error: %v", err)
+		return mapError(c, resp.Code, "err_functional", resp.Data)
 	}
 
 	if resp.Template != nil {
-		return utils.RenderTempl(c, http.StatusOK, resp.Template)
+		return h.RenderTempl(c, http.StatusOK, resp.Template)
 	}
 
 	if resp.File {
@@ -337,7 +350,7 @@ func formatResponse(c echo.Context, err any) error {
 	return c.JSON(resp.Code, resp.Data)
 }
 
-func sendError(c echo.Context, status int, kind string, error any) error {
+func mapError(c echo.Context, status int, kind string, error any) error {
 	return c.JSON(status, map[string]any{
 		"requestId": c.Response().Header().Get(echo.HeaderXRequestID),
 		"kind":      kind,
@@ -354,10 +367,6 @@ func (c *ctxImpl) Param(value string) string {
 
 func (c *ctxImpl) Set(key string, value any) {
 	c.internal.Set(key, value)
-}
-
-func (c *ctxImpl) Redirect(code int, url string) error {
-	return c.internal.Redirect(code, url)
 }
 
 func (c *ctxImpl) Env() Env {
@@ -478,4 +487,8 @@ func (c *ctxImpl) Unauthorized(message string) HttpResponse {
 
 func (c *ctxImpl) Forbidden(message string) HttpResponse {
 	return HttpResponse{Code: http.StatusForbidden, Data: message}
+}
+
+func (c *ctxImpl) Redirect(code int, url string) RedirectResponse {
+	return RedirectResponse{Code: code, Url: url}
 }

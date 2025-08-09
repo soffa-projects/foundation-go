@@ -7,6 +7,7 @@ import (
 
 type EmailSender interface {
 	Send(msg EmailMessage) error
+	On(name string, fn func(msg EmailMessage))
 }
 
 type Attachment struct {
@@ -16,7 +17,7 @@ type Attachment struct {
 }
 
 type EmailMessage struct {
-	TemplateDir  fs.FS
+	TemplateFS   fs.FS
 	To           string
 	Cc           string
 	Subject      string

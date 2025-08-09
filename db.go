@@ -15,8 +15,8 @@ type TenantEntity struct {
 	Entity        `json:"-"`
 	bun.BaseModel `bun:"table:tenants" `
 	ID            *string    `bun:",pk" json:"id"`
-	Name          string     `json:"name"`
-	Slug          string     `json:"slug"`
+	Name          *string    `json:"name"`
+	Slug          *string    `json:"slug"`
 	Status        *string    `json:"status,omitempty"`
 	DatabaseUrl   string     `json:"-"`
 	CreatedAt     *time.Time `json:"created_at"`
