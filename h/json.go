@@ -22,12 +22,12 @@ func (j JsonValue) Get(path string) any {
 	return nil
 }
 
-func ToJsonString(v any) string {
+func ToJsonString(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return string(b)
+	return string(b), nil
 }
 
 func FromJsonString(source string, target any) error {

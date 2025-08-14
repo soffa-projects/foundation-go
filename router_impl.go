@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"runtime/debug"
 	"strings"
 	"time"
 
@@ -245,8 +244,9 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 			if rec := recover(); rec != nil {
 				originalErr := rec.(error)
 				if !r.production {
-					debug.PrintStack()
-					//tracerr.PrintSourceColor(tracerr.Wrap(err))
+					//debug.PrintStack()
+					log.Error("panic: %v", originalErr)
+					tracerr.PrintSourceColor(tracerr.Wrap(originalErr), 1)
 				}
 				if cnx != nil {
 					if err := cnx.Rollback(); err != nil {
@@ -277,7 +277,9 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 		} else {
 			cnx = r.env.DS.Connection("default")
 		}
-		cnx, err = cnx.Tx(rc)
+
+		tx, err := cnx.Tx(rc)
+
 		if err != nil {
 			return formatResponse(c, err)
 		}
@@ -286,13 +288,12 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 			return formatResponse(c, HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized"})
 		}
 
-		result := handler.Handle(rc.WithValue(ConnectionKey{}, cnx))
+		result := handler.Handle(rc.WithValue(ConnectionKey{}, tx))
 
 		if result == nil {
 			return formatResponse(c, HttpResponse{Code: http.StatusNoContent, Data: nil})
 		}
 
-		// Handle different response types
 		switch v := result.(type) {
 		case HttpResponse, error, RedirectResponse:
 			return formatResponse(c, v)
@@ -314,6 +315,7 @@ func formatResponse(c echo.Context, err any) error {
 	}
 
 	if _, ok := err.(HttpResponse); !ok {
+		log.Error("unexpected error: %v", err)
 		return c.JSON(http.StatusInternalServerError, err)
 	}
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pressly/goose/v3"
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -35,16 +36,21 @@ func (t connectionImpl) Tx(ctx context.Context) (Connection, error) {
 	if t.db == nil {
 		return nil, errors.New("database not initialized")
 	}
-	tx, err := t.db.BeginTx(ctx, &sql.TxOptions{})
+	_, err := t.db.BeginTx(ctx, &sql.TxOptions{
+		ReadOnly:  false,
+		Isolation: sql.LevelDefault,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %v", err)
 	}
-	return &connectionImpl{
-		Default: t.Default,
-		Url:     t.Url,
-		Id:      t.Id,
-		dialect: t.dialect,
-		db:      tx,
+	return connectionImpl{
+		Default:     t.Default,
+		Url:         t.Url,
+		Id:          fmt.Sprintf("%s-tx-%s", t.Id, h.RandomString(5)),
+		dialect:     t.dialect,
+		db:          t.db,
+		schema:      t.schema,
+		initialized: t.initialized,
 	}, nil
 }
 
@@ -71,14 +77,22 @@ func (t *connectionImpl) configure(dir fs.FS) error {
 	)
 
 	if strings.HasPrefix(t.Url, "postgres://") || strings.HasPrefix(t.Url, "postgresql://") {
-		sqldb = sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(t.Url)))
-		db = bun.NewDB(sqldb, pgdialect.New())
-		dialect = "postgres"
 		u, err := url.Parse(t.Url)
 		if err != nil {
 			return err
 		}
 		t.schema = u.Query().Get("schema")
+		if t.schema != "" {
+			t.Url, err = h.RemoveParamFromUrl(t.Url, "schema")
+			if err != nil {
+				return err
+			}
+		}
+
+		sqldb = sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(t.Url)))
+		db = bun.NewDB(sqldb, pgdialect.New())
+		dialect = "postgres"
+
 	} else if strings.HasPrefix(t.Url, "sqlite://") {
 		dialect = "sqlite3"
 		sqliteDSN := strings.Replace(t.Url, "sqlite://", "", 1)
@@ -130,20 +144,10 @@ func (t connectionImpl) migrate(dir fs.FS) error {
 	if err := goose.Up((t.db.(*bun.DB)).DB, path, goose.WithAllowMissing()); err != nil {
 		return fmt.Errorf("failed to run migrations: %v", err)
 	}
+
+	log.Info("migrations for %s completed", t.Id)
 	return nil
 }
-
-/*
-func (i connectionImpl) Tx(ctx context.Context, s *sql.TxOptions) (DB, error) {
-	tx, err := i.db.BeginTx(ctx, s)
-	if err != nil {
-		return nil, err
-	}
-	return txImpl{
-		tx: tx,
-	}, nil
-}
-*/
 
 func (t connectionImpl) Insert(ctx context.Context, entity Entity) error {
 	_, err := t.db.NewInsert().Model(entity).Exec(ctx)
@@ -260,7 +264,7 @@ func countByJoin(ctx context.Context, query *bun.SelectQuery, model Entity, join
 }
 
 func Query(ctx context.Context, query *bun.SelectQuery, model Entity, opts QueryOpts) (bool, error) {
-	q := query.NewSelect().Model(model)
+	q := query.Model(model)
 	if opts.Columns != "" {
 		q = q.ColumnExpr(opts.Columns)
 	}

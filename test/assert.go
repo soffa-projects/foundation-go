@@ -43,3 +43,7 @@ func (a Assertions) Equals(value any, expected any) {
 func (a Assertions) MatchJson(value string, pattern string) {
 	a.internal.Expect(value).To(gomega.MatchJSON(pattern))
 }
+
+func (a Assertions) NotEqual(value any, expected any) {
+	a.internal.Expect(value).To(gomega.Not(gomega.Equal(expected)))
+}

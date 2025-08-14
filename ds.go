@@ -1,9 +1,11 @@
 package f
 
+import "context"
+
 type DataSource interface {
-	CreateTenant(slug string, name string, databaseUrl string) (*TenantEntity, error)
-	GetTenantList() ([]TenantEntity, error)
-	GetTenant(id string) (*TenantEntity, error)
-	TenantExists(id string) (bool, error)
+	CreateTenant(ctx context.Context, slug string, name string, databaseUrl string) (*TenantEntity, error)
+	GetTenantList(ctx context.Context) ([]TenantEntity, error)
+	GetTenant(ctx context.Context, id string) (*TenantEntity, error)
+	TenantExists(ctx context.Context, id string) (bool, error)
 	Connection(tenantId string) Connection
 }

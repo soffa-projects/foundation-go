@@ -94,6 +94,11 @@ func (r HttpRes) IsOk() HttpRes {
 	return r
 }
 
+func (r HttpRes) IsRedirect() HttpRes {
+	r.assert.Equals(r.resp.StatusCode(), http.StatusFound)
+	return r
+}
+
 func (r HttpRes) IsCreated() HttpRes {
 	r.assert.Equals(r.resp.StatusCode(), http.StatusCreated)
 	return r

@@ -38,6 +38,17 @@ func (u Url) Query(key string) any {
 	return u.query[key]
 }
 
+func RemoveParamFromUrl(input string, param string) (string, error) {
+	u, err := url.Parse(input)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	q.Del(param)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 func AppendParamToUrl(url string, param string, value string) string {
 	if strings.Contains(url, "?") {
 		return fmt.Sprintf("%s&%s=%s", url, param, value)

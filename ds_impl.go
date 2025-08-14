@@ -43,11 +43,12 @@ func (ds *MultiTenantDataSource) init() error {
 	ds.master = cnx
 	ds.tenants[_defaultTenantId] = cnx
 
-	var entities []TenantEntity
-	if _, err := ds.master.Query(context.Background(), &entities, QueryOpts{}); err != nil {
+	tenantList, err := ds.GetTenantList(context.Background())
+	if err != nil {
 		return err
 	}
-	for _, tenant := range entities {
+
+	for _, tenant := range tenantList {
 		cnx, err := ds.newConnection(*tenant.ID, tenant.DatabaseUrl)
 		if err != nil {
 			return err
@@ -69,9 +70,9 @@ func (ds *MultiTenantDataSource) Connection(id string) Connection {
 	}
 	return nil
 }
-func (ds *MultiTenantDataSource) CreateTenant(slug string, name string, dbUrl string) (*TenantEntity, error) {
+func (ds *MultiTenantDataSource) CreateTenant(ctx context.Context, slug string, name string, dbUrl string) (*TenantEntity, error) {
 
-	found, err := ds.master.ExistsBy(context.Background(), &TenantEntity{}, "slug = ?", slug)
+	found, err := ds.master.ExistsBy(ctx, (*TenantEntity)(nil), "slug = ?", slug)
 	if err != nil {
 		return nil, err
 	}
@@ -100,24 +101,24 @@ func (ds *MultiTenantDataSource) CreateTenant(slug string, name string, dbUrl st
 	}
 	ds.tenants[slug] = cnx
 	ds.tenants[tenantId] = cnx
-	if err := ds.master.Insert(context.Background(), tenant); err != nil {
+	if err := ds.master.Insert(ctx, tenant); err != nil {
 		return nil, err
 	}
 	return tenant, nil
 }
 
-func (ds *MultiTenantDataSource) GetTenantList() ([]TenantEntity, error) {
+func (ds *MultiTenantDataSource) GetTenantList(ctx context.Context) ([]TenantEntity, error) {
 	entities := []TenantEntity{}
-	if _, err := ds.master.Query(context.Background(), &entities, QueryOpts{}); err != nil {
+	if _, err := ds.master.Query(ctx, &entities, QueryOpts{}); err != nil {
 		return nil, err
 	}
 	return entities, nil
 }
 
-func (ds *MultiTenantDataSource) GetTenant(id string) (*TenantEntity, error) {
+func (ds *MultiTenantDataSource) GetTenant(ctx context.Context, id string) (*TenantEntity, error) {
 	entity := TenantEntity{}
 	value := strings.ToLower(id)
-	empty, err := ds.master.FindBy(context.Background(), &entity, "slug = ? OR id = ?", value, value)
+	empty, err := ds.master.FindBy(ctx, &entity, "slug = ? OR id = ?", value, value)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +128,7 @@ func (ds *MultiTenantDataSource) GetTenant(id string) (*TenantEntity, error) {
 	return &entity, nil
 }
 
-func (ds *MultiTenantDataSource) TenantExists(id string) (bool, error) {
+func (ds *MultiTenantDataSource) TenantExists(ctx context.Context, id string) (bool, error) {
 	_, ok := ds.tenants[id]
 	if !ok {
 		return false, nil
