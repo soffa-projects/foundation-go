@@ -209,6 +209,18 @@ func (t connectionImpl) ExistsBy(ctx context.Context, entity Entity, where strin
 	return true, nil
 }
 
+func (t connectionImpl) Count(ctx context.Context, entity Entity) (int, error) {
+	count, err := t.db.NewSelect().
+		Model(entity).
+		Count(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+	}
+	return count, err
+}
+
 func (t connectionImpl) CountBy(ctx context.Context, entity Entity, where string, args ...any) (int, error) {
 	return countByJoin(ctx, t.db.NewSelect(), entity, "", where, args...)
 }

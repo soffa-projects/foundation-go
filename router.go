@@ -47,6 +47,7 @@ type Context interface {
 	WithValue(key, value any) Context
 	// HttpResponse
 	Unauthorized(message string) HttpResponse
+	Forbidden(message string) HttpResponse
 	BadRequest(message string) HttpResponse
 	NotFound(message string) HttpResponse
 	Conflict(message string) HttpResponse
@@ -61,7 +62,7 @@ type Middleware = func(Context) error
 type Route struct {
 	Transactional bool
 	Roles         []string
-	Pre           Middleware
+	Pre           []Middleware
 	Handle        func(Context) any
 	Authenticated bool
 }
@@ -70,6 +71,7 @@ type HandlerInit = func(Env) Route
 type Authentication struct {
 	UserId     string
 	Audience   []string
+	Role       string
 	Permission string
 	Email      string
 }

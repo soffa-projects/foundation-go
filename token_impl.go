@@ -17,6 +17,7 @@ type defaultJwtProvider struct {
 	TokenProvider
 	privkey jwk.Key
 	pubkey  jwk.Key
+	issuer  string
 }
 
 func NewTokenProvider(cfg JwtConfig) TokenProvider {
@@ -44,6 +45,7 @@ func NewTokenProvider(cfg JwtConfig) TokenProvider {
 	return &defaultJwtProvider{
 		privkey: privkey,
 		pubkey:  pubkey,
+		issuer:  cfg.Issuer,
 	}
 }
 
@@ -66,9 +68,13 @@ func stripPEMHeaders(pemString string) string {
 }
 
 func (p *defaultJwtProvider) Create(cfg CreateJwtConfig) (string, error) {
+	issuer := cfg.Issuer
+	if issuer == "" {
+		issuer = p.issuer
+	}
 	builder := jwt.NewBuilder().
 		JwtID(h.NewId("")).
-		Issuer(cfg.Issuer).
+		Issuer(issuer).
 		IssuedAt(time.Now()).
 		Subject(cfg.Subject).
 		Audience(cfg.Audience).

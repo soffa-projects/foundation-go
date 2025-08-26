@@ -36,6 +36,7 @@ type Connection interface {
 	//
 	FindBy(ctx context.Context, model Entity, where string, args ...any) (bool, error)
 	ExistsBy(ctx context.Context, model Entity, where string, args ...any) (bool, error)
+	Count(ctx context.Context, model Entity) (int, error)
 	CountBy(ctx context.Context, model Entity, where string, args ...any) (int, error)
 	FindByJoin(ctx context.Context, model Entity, join string, where string, args ...any) (bool, error)
 	CountByJoin(ctx context.Context, model Entity, join string, where string, args ...any) (int, error)
@@ -129,6 +130,10 @@ func (r *Repo) FindBy(ctx context.Context, model Entity, where string, args ...a
 
 func (r *Repo) ExistsBy(ctx context.Context, model Entity, where string, args ...any) (bool, error) {
 	return ds(ctx).ExistsBy(ctx, model, where, args...)
+}
+
+func (r *Repo) CountAll(ctx context.Context, model Entity) (int, error) {
+	return ds(ctx).Count(ctx, model)
 }
 
 func (r *Repo) CountBy(ctx context.Context, model Entity, where string, args ...any) (int, error) {

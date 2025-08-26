@@ -7,6 +7,7 @@ import (
 )
 
 type JwtConfig struct {
+	Issuer           string
 	JwkPrivateBase64 string
 	JwkPublicBase64  string
 }

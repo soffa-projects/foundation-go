@@ -31,6 +31,7 @@ type LocalesConfig struct {
 
 type Env struct {
 	AppName       string
+	BrandLogo     string
 	Production    bool
 	JwtSecret     string
 	PublicURL     string

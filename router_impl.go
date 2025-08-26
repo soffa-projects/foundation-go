@@ -74,15 +74,18 @@ func NewEchoRouter(env Env, cfg *RouterConfig) Router {
 					sub, _ := token.Subject()
 					aud, _ := token.Audience()
 					var permission string
+					var role string
 					var email string
 					_ = token.Get("permission", &permission)
 					_ = token.Get("email", &email)
+					_ = token.Get("role", &role)
 					//c.Set("authToken", authToken)
 					auth := &Authentication{
 						UserId:     sub,
 						Audience:   aud,
 						Permission: permission,
 						Email:      email,
+						Role:       role,
 					}
 					c.Set(_authKey, auth)
 				}
@@ -266,9 +269,11 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 		}()
 
 		if handler.Pre != nil {
-			err := handler.Pre(rc)
-			if err != nil {
-				return formatResponse(c, err)
+			for _, pre := range handler.Pre {
+				err := pre(rc)
+				if err != nil {
+					return formatResponse(c, err)
+				}
 			}
 		}
 
