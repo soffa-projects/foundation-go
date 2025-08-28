@@ -277,23 +277,28 @@ func (r *routerImpl) wrap(handlerInit HandlerInit) echo.HandlerFunc {
 			}
 		}
 
-		if rc.Get(_connectionKey) != nil {
-			cnx = rc.Get(_connectionKey).(Connection)
-		} else {
-			cnx = r.env.DS.Connection("default")
-		}
-
-		tx, err := cnx.Tx(rc)
-
-		if err != nil {
-			return formatResponse(c, err)
-		}
-
 		if handler.Authenticated && rc.Auth() == nil {
 			return formatResponse(c, HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized"})
 		}
 
-		result := handler.Handle(rc.WithValue(ConnectionKey{}, tx))
+		var result any
+		if r.env.DS != nil {
+			if rc.Get(_connectionKey) != nil {
+				cnx = rc.Get(_connectionKey).(Connection)
+			} else {
+				cnx = r.env.DS.Connection("default")
+			}
+
+			tx, err := cnx.Tx(rc)
+			if err != nil {
+				return formatResponse(c, err)
+			}
+
+			result = handler.Handle(rc.WithValue(ConnectionKey{}, tx))
+
+		} else {
+			result = handler.Handle(rc)
+		}
 
 		if result == nil {
 			return formatResponse(c, HttpResponse{Code: http.StatusNoContent, Data: nil})
