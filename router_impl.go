@@ -331,6 +331,10 @@ func formatResponse(c echo.Context, err any) error {
 
 	resp := err.(HttpResponse)
 
+	if resp.Code == 204 {
+		return c.NoContent(resp.Code)
+	}
+
 	if resp.Code >= 500 {
 		log.Error("unexpected error: %v", err)
 		return mapError(c, resp.Code, "err_technical", "err_unexpected_error")
@@ -375,6 +379,10 @@ func mapError(c echo.Context, status int, kind string, error any) error {
 
 func (c *ctxImpl) Param(value string) string {
 	return c.internal.Param(value)
+}
+
+func (c *ctxImpl) Header(value string) string {
+	return c.internal.Request().Header.Get(value)
 }
 
 func (c *ctxImpl) Set(key string, value any) {
