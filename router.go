@@ -42,6 +42,7 @@ type Context interface {
 	Bind(input any)
 	ShouldBind(input any) error
 	Param(value string) string
+	Header(value string) string
 	Set(key string, value any)
 	Get(key string) any
 	WithValue(key, value any) Context
@@ -55,6 +56,7 @@ type Context interface {
 
 	File(data []byte, contentType string, filename string) HttpResponse
 	Created(output any) HttpResponse
+	NoContent() HttpResponse
 }
 
 type Middleware = func(Context) error
