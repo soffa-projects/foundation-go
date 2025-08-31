@@ -8,8 +8,13 @@ import (
 )
 
 type Url struct {
-	Url   string
-	query map[string]any
+	Scheme   string
+	Path     string
+	Url      string
+	Host     string
+	User     string
+	Password string
+	query    map[string]any
 }
 
 func ParseUrl(input string) (Url, error) {
@@ -23,9 +28,18 @@ func ParseUrl(input string) (Url, error) {
 			queryParams[key] = values[0] // Take first value if multiple
 		}
 	}
+	password, ok := u.User.Password()
+	if !ok {
+		password = ""
+	}
 	return Url{
-		Url:   input,
-		query: queryParams,
+		Scheme:   u.Scheme,
+		Path:     u.Path,
+		Url:      input,
+		Host:     u.Host,
+		User:     u.User.Username(),
+		Password: password,
+		query:    queryParams,
 	}, nil
 }
 

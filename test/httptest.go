@@ -3,6 +3,8 @@ package test
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-resty/resty/v2"
@@ -34,6 +36,27 @@ type ApiDef struct {
 	Body   any
 	Bearer string
 	Result any
+}
+
+func ProjectRoo(t *testing.T) string {
+	t.Helper()
+
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("go.mod not found")
+		}
+		dir = parent
+	}
 }
 
 func NewRestClient(t *testing.T, baseUrl string) *RestClient {
