@@ -191,24 +191,76 @@ type routerImpl struct {
 	env        f.ApplicationEnv
 }
 
+type groupRouterImpl struct {
+	f.RouterGroup
+	internal   *echo.Group
+	production bool
+	env        f.ApplicationEnv
+}
+
+func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGroup {
+	g := r.internal.Group(path)
+	if len(middlewares) > 0 {
+		for _, middleware := range middlewares {
+			g.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+				return func(c echo.Context) error {
+					rc, err := newRequestContext(c, r.env)
+					if err != nil {
+						return err
+					}
+					if err := middleware(rc); err != nil {
+						return formatResponse(c, err)
+					}
+					return next(c)
+				}
+			})
+		}
+	}
+	return &groupRouterImpl{
+		internal:   g,
+		production: r.production,
+		env:        r.env,
+	}
+}
+
 func (r *routerImpl) GET(path string, handler f.HandlerInit) {
-	r.internal.GET(path, r.wrap(handler))
+	r.internal.GET(path, wrap(r.env, handler))
 }
 
 func (r *routerImpl) POST(path string, handler f.HandlerInit) {
-	r.internal.POST(path, r.wrap(handler))
+	r.internal.POST(path, wrap(r.env, handler))
 }
 
 func (r *routerImpl) DELETE(path string, handler f.HandlerInit) {
-	r.internal.DELETE(path, r.wrap(handler))
+	r.internal.DELETE(path, wrap(r.env, handler))
 }
 
 func (r *routerImpl) PUT(path string, handler f.HandlerInit) {
-	r.internal.PUT(path, r.wrap(handler))
+	r.internal.PUT(path, wrap(r.env, handler))
 }
 
 func (r *routerImpl) PATCH(path string, handler f.HandlerInit) {
-	r.internal.PATCH(path, r.wrap(handler))
+	r.internal.PATCH(path, wrap(r.env, handler))
+}
+
+func (r *groupRouterImpl) GET(path string, handler f.HandlerInit) {
+	r.internal.GET(path, wrap(r.env, handler))
+}
+
+func (r *groupRouterImpl) POST(path string, handler f.HandlerInit) {
+	r.internal.POST(path, wrap(r.env, handler))
+}
+
+func (r *groupRouterImpl) DELETE(path string, handler f.HandlerInit) {
+	r.internal.DELETE(path, wrap(r.env, handler))
+}
+
+func (r *groupRouterImpl) PUT(path string, handler f.HandlerInit) {
+	r.internal.PUT(path, wrap(r.env, handler))
+}
+
+func (r *groupRouterImpl) PATCH(path string, handler f.HandlerInit) {
+	r.internal.PATCH(path, wrap(r.env, handler))
 }
 
 func (r *routerImpl) Use(middleware f.Middleware) {
@@ -226,15 +278,15 @@ func (r *routerImpl) Use(middleware f.Middleware) {
 	})
 }
 
-func (r *routerImpl) wrap(handlerInit f.HandlerInit) echo.HandlerFunc {
+func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 
-	handler := handlerInit(r.env)
+	handler := handlerInit(env)
 	//isPublic := handler.Public
 
 	return func(c echo.Context) error {
 		// Authentication check
 
-		rc, err := newRequestContext(c, r.env)
+		rc, err := newRequestContext(c, env)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err)
 		}
@@ -247,7 +299,7 @@ func (r *routerImpl) wrap(handlerInit f.HandlerInit) echo.HandlerFunc {
 		defer func() {
 			if rec := recover(); rec != nil {
 				originalErr := rec.(error)
-				if !r.production {
+				if !env.Production {
 					//debug.PrintStack()
 					log.Error("panic: %v", originalErr)
 					tracerr.PrintSourceColor(tracerr.Wrap(originalErr), 1)
@@ -283,11 +335,14 @@ func (r *routerImpl) wrap(handlerInit f.HandlerInit) echo.HandlerFunc {
 		}
 
 		var result any
-		if r.env.DS != nil {
+
+		log.Info("active tenant is: %s", rc.TenantId())
+
+		if env.DS != nil {
 			if rc.Get(_connectionKey) != nil {
 				cnx = rc.Get(_connectionKey).(f.Connection)
 			} else {
-				cnx = r.env.DS.Connection("default")
+				cnx = env.DS.Connection("default")
 			}
 
 			tx, err := cnx.Tx(rc)
@@ -429,6 +484,11 @@ func (c *ctxImpl) TenantId() string {
 
 func (c *ctxImpl) ShouldBind(input any) error {
 	if err := c.internal.Bind(input); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+
+	binder := &echo.DefaultBinder{}
+	if err := binder.BindHeaders(c.internal, input); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 	validate := validator.New()

@@ -2,7 +2,6 @@ package f
 
 import (
 	"context"
-	"io/fs"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -16,15 +15,12 @@ type TenantEntity struct {
 	bun.BaseModel `bun:"table:tenants" `
 	ID            *string    `bun:",pk" json:"id"`
 	Name          *string    `json:"name"`
+	ApiKey        string     `json:"api_key"`
 	Slug          *string    `json:"slug"`
 	Status        *string    `json:"status,omitempty"`
 	DatabaseUrl   string     `json:"-"`
 	CreatedAt     *time.Time `json:"created_at"`
 	UpdatedAt     *time.Time `json:"updated_at"`
-}
-
-type DSOpt struct {
-	MigrationsFS fs.FS
 }
 
 type Connection interface {

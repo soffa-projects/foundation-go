@@ -69,7 +69,7 @@ func (t connectionImpl) Rollback() error {
 	return nil
 }
 
-func (t *connectionImpl) configure(migrationsFS fs.FS) error {
+func (t *connectionImpl) configure(migrationsFS fs.FS, features []f.Feature) error {
 	var (
 		sqldb   *sql.DB
 		db      *bun.DB
@@ -110,25 +110,53 @@ func (t *connectionImpl) configure(migrationsFS fs.FS) error {
 	t.db = db
 	t.dialect = dialect
 
-	if migrationsFS != nil {
-		return t.migrate(migrationsFS)
+	sharedMigrations := "db/migrations/shared"
+	tenantMigrations := "db/migrations/tenant"
+
+	orderedFeatures := []f.Feature{}
+	for _, feature := range features {
+		if feature.FS != nil {
+			orderedFeatures = append(orderedFeatures, feature)
+		}
 	}
+
+	if t.Default {
+		if migrationsFS != nil {
+			if err := t.migrate(migrationsFS, sharedMigrations); err != nil {
+				return err
+			}
+		}
+		for _, feature := range orderedFeatures {
+			if feature.FS != nil {
+				if err := t.migrate(feature.FS, sharedMigrations); err != nil {
+					return err
+				}
+			}
+		}
+	} else {
+		if migrationsFS != nil {
+			if err := t.migrate(migrationsFS, tenantMigrations); err != nil {
+				return err
+			}
+		}
+		for _, feature := range orderedFeatures {
+			if feature.FS != nil {
+				if err := t.migrate(feature.FS, tenantMigrations); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
-func (t connectionImpl) migrate(dir fs.FS) error {
-	var path string
-	if t.Default {
-		path = "db/migrations/shared"
-	} else {
-		path = "db/migrations/tenant"
-	}
+func (t connectionImpl) migrate(dir fs.FS, path string) error {
 
 	// Check if there are any *.sql files in the migration directory
 	entries, err := fs.ReadDir(dir, path)
 	if err != nil {
-		log.Info("no migration files found in %s, skipping migrations for %s", path, t.Id)
-		return nil // treat as no migrations to run
+		return nil
 	}
 	hasSQL := false
 	for _, entry := range entries {
@@ -138,11 +166,9 @@ func (t connectionImpl) migrate(dir fs.FS) error {
 		}
 	}
 	if !hasSQL {
-		log.Info("no migration files found in %s, skipping migrations for %s", path, t.Id)
 		return nil
 	}
 
-	log.Info("migrating tenant %s", t.Id)
 	goose.SetBaseFS(dir)
 	ctx := context.Background()
 
@@ -151,24 +177,23 @@ func (t connectionImpl) migrate(dir fs.FS) error {
 	}
 	goose.SetTableName("database_changelog")
 
-	log.Info("running migrations for %s", t.Id)
 	if t.dialect == "postgres" {
 		schema := "public"
 		if t.schema != "" {
 			schema = t.schema
 		}
 		if _, err := t.db.ExecContext(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", schema)); err != nil {
-			return fmt.Errorf("failed to create schema: %v", err)
+			return fmt.Errorf("failed to create schema %s: %v", schema, err)
 		}
 		if _, err := t.db.ExecContext(ctx, fmt.Sprintf("SET search_path TO %s", schema)); err != nil {
-			return fmt.Errorf("failed to set search path: %v", err)
+			return fmt.Errorf("failed to set search path %s: %v", schema, err)
 		}
 	}
 	if err := goose.Up((t.db.(*bun.DB)).DB, path, goose.WithAllowMissing()); err != nil {
-		return fmt.Errorf("failed to run migrations: %v", err)
+		return fmt.Errorf("failed to run migrations for %s: %v", t.Id, err)
 	}
 
-	log.Info("migrations for %s completed", t.Id)
+	log.Info("migrations completed for tenant: %s", t.Id)
 	return nil
 }
 

@@ -16,10 +16,19 @@ type Methods struct {
 	PATCH  HandlerInit
 }
 
+type RouterGroup interface {
+	GET(path string, handler HandlerInit)
+	POST(path string, handler HandlerInit)
+	DELETE(path string, handler HandlerInit)
+	PUT(path string, handler HandlerInit)
+	PATCH(path string, handler HandlerInit)
+}
+
 type Router interface {
 	Handler() http.Handler
 	Listen(port int)
 	Shutdown(ctx context.Context) error
+	Group(path string, middleware ...Middleware) RouterGroup
 	GET(path string, handler HandlerInit)
 	POST(path string, handler HandlerInit)
 	DELETE(path string, handler HandlerInit)

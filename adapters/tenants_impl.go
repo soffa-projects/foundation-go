@@ -13,12 +13,7 @@ import (
 	"github.com/soffa-projects/foundation-go/log"
 )
 
-type TenantProviderConfig struct {
-	DefaultDatabaseURL string
-	MigrationsFS       fs.FS
-}
-
-func ParseTenantProvider(provider string, cfg TenantProviderConfig) f.TenantProvider {
+func NewTenantProvider(provider string, cfg f.TenantProviderConfig) f.TenantProvider {
 	res, err := h.ParseUrl(provider)
 	if err != nil {
 		log.Fatal("failed to parse tenant provider: %v", err)
@@ -40,23 +35,49 @@ type LocalTenantProvider struct {
 	f.TenantProvider
 	defaultDatabaseURL string
 	migrationsFS       fs.FS
-	ds                 f.Connection
+	features           []f.Feature
+	master             f.Connection
 	tenants            map[string]bool
 }
 
 func NewLocalTenantProvider(defaultDatabaseURL string, migrationsFS fs.FS) f.TenantProvider {
-	ds := NewDefaultDataSource(defaultDatabaseURL, f.DSOpt{MigrationsFS: migrationsFS})
+	/*ds := NewDefaultDataSource(defaultDatabaseURL, migrationsFS)
 	if ds == nil {
 		log.Fatal("failed to initialize data source.")
-	}
+	}*/
 	provider := &LocalTenantProvider{
 		defaultDatabaseURL: defaultDatabaseURL,
-		ds:                 ds,
-		migrationsFS:       migrationsFS,
-		tenants:            make(map[string]bool),
+		//ds:                 ds,
+		migrationsFS: migrationsFS,
+		tenants:      make(map[string]bool),
 	}
 
 	return provider
+}
+
+func (tp *LocalTenantProvider) Init(features []f.Feature) error {
+	cnx, err := newConnection(_defaultTenantId, tp.defaultDatabaseURL, tp.migrationsFS, features)
+	if err != nil {
+		return nil
+	}
+	tp.features = features
+	tp.master = cnx
+	tenants, err := tp.GetTenantList(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, tenant := range tenants {
+
+		_, err := newConnection(*tenant.ID, tp.defaultDatabaseURL, tp.migrationsFS, features)
+		if err != nil {
+			return nil
+		}
+
+		tp.tenants[*tenant.ID] = true
+		tp.tenants[*tenant.Slug] = true
+	}
+
+	return nil
 }
 
 func (tp *LocalTenantProvider) Default() f.TenantEntity {
@@ -67,7 +88,7 @@ func (tp *LocalTenantProvider) Default() f.TenantEntity {
 
 func (tp *LocalTenantProvider) GetTenantList(ctx context.Context) ([]f.TenantEntity, error) {
 	entities := []f.TenantEntity{}
-	if _, err := tp.ds.Query(ctx, &entities, f.QueryOpts{}); err != nil {
+	if _, err := tp.master.Query(ctx, &entities, f.QueryOpts{}); err != nil {
 		return nil, err
 	}
 	return entities, nil
@@ -76,7 +97,7 @@ func (tp *LocalTenantProvider) GetTenantList(ctx context.Context) ([]f.TenantEnt
 func (tp *LocalTenantProvider) GetTenant(ctx context.Context, id string) (*f.TenantEntity, error) {
 	entity := f.TenantEntity{}
 	value := strings.ToLower(id)
-	empty, err := tp.ds.FindBy(ctx, &entity, "slug = ? OR id = ?", value, value)
+	empty, err := tp.master.FindBy(ctx, &entity, "slug = ? OR id = ?", value, value)
 	if err != nil {
 		return nil, err
 	}
@@ -94,40 +115,42 @@ func (tp *LocalTenantProvider) TenantExists(ctx context.Context, id string) (boo
 	return true, nil
 }
 
-func (tp *LocalTenantProvider) CreateTenant(ctx context.Context, slug string, name string, dbUrl string) (*f.TenantEntity, error) {
+func (tp *LocalTenantProvider) CreateTenant(ctx context.Context, model f.Tenant) (*f.TenantEntity, error) {
 
-	found, err := tp.ds.ExistsBy(ctx, (*f.TenantEntity)(nil), "slug = ?", slug)
+	found, err := tp.master.ExistsBy(ctx, (*f.TenantEntity)(nil), "slug = ?", model.Slug)
 	if err != nil {
 		return nil, err
 	}
 	if found {
-		return nil, f.TenantAlreadyExistsError{Value: slug}
+		return nil, f.TenantAlreadyExistsError{Value: model.Slug}
 	}
 
 	tenantId := h.NewId("t_")
+	dbUrl := model.DatabaseUrl
 
-	if dbUrl == "" {
-		dbUrl = h.AppendParamToUrl(tp.ds.DatabaseUrl(), "schema", tenantId)
+	if model.DatabaseUrl == "" {
+		dbUrl = h.AppendParamToUrl(tp.master.DatabaseUrl(), "schema", tenantId)
 	}
 
 	tenant := &f.TenantEntity{
 		ID:          &tenantId,
-		Slug:        h.TrimToNull(slug),
-		Name:        h.TrimToNull(name),
+		Slug:        h.TrimToNull(model.Slug),
+		Name:        h.TrimToNull(model.Name),
+		ApiKey:      model.ApiKey,
 		DatabaseUrl: dbUrl,
 		Status:      h.StrPtr("active"),
 		CreatedAt:   h.NowP(),
 		UpdatedAt:   h.NowP(),
 	}
 
-	_, err = newConnection(tenantId, dbUrl, tp.migrationsFS)
+	_, err = newConnection(tenantId, dbUrl, tp.migrationsFS, tp.features)
 	if err != nil {
 		return nil, err
 	}
-	if err := tp.ds.Insert(ctx, tenant); err != nil {
+	if err := tp.master.Insert(ctx, tenant); err != nil {
 		return nil, err
 	}
-	tp.tenants[slug] = true
+	tp.tenants[model.Slug] = true
 	tp.tenants[tenantId] = true
 	return tenant, nil
 }
@@ -146,11 +169,13 @@ type TenantFile struct {
 	Tenants []tenantItem `json:"tenants"`
 }
 
-type FixedTenantProvider struct {
+type FileTenantProvider struct {
 	f.TenantProvider
 	tenants            map[string]f.TenantEntity
 	master             f.Connection
 	defaultDatabaseURL string
+	features           []f.Feature
+	migrationsFS       fs.FS
 }
 
 func NewFileTenantProvider(cfg h.Url, defaultDatabaseURL string, migrationsFS fs.FS) f.TenantProvider {
@@ -176,40 +201,52 @@ func NewFileTenantProvider(cfg h.Url, defaultDatabaseURL string, migrationsFS fs
 
 	tenants := make(map[string]f.TenantEntity)
 
+	log.Info("file tenant provider initialized with %d tenants", len(tenants))
 	for _, tenant := range content.Tenants {
+		databaseUrl := strings.Replace(tenant.DatabaseUrl, "%RANDOM%", h.RandomString(5), 1)
 		tenants[tenant.ID] = f.TenantEntity{
-			DatabaseUrl: tenant.DatabaseUrl,
+			DatabaseUrl: databaseUrl,
 			ID:          h.StrPtr(tenant.ID),
 			Slug:        h.StrPtr(tenant.Slug),
 			Name:        h.StrPtr(tenant.ID),
 		}
-		_, err := newConnection(tenant.ID, tenant.DatabaseUrl, migrationsFS)
-		if err != nil {
-			log.Fatal("failed to initialize data source for tenant %s: %v", tenant.ID, err)
-		}
-
-	}
-	ds := NewDefaultDataSource(defaultDatabaseURL, f.DSOpt{MigrationsFS: migrationsFS})
-	if ds == nil {
-		log.Fatal("failed to initialize data source.")
 	}
 
-	log.Info("file tenant provider initialized with %d tenants", len(tenants))
-
-	return &FixedTenantProvider{
+	return &FileTenantProvider{
 		tenants:            tenants,
 		defaultDatabaseURL: defaultDatabaseURL,
-		master:             ds,
+		migrationsFS:       migrationsFS,
 	}
 }
 
-func (tp *FixedTenantProvider) Default() f.TenantEntity {
+func (tp *FileTenantProvider) Init(features []f.Feature) error {
+	ds, err := newConnection(_defaultTenantId, tp.defaultDatabaseURL, tp.migrationsFS, features)
+	if err != nil {
+		log.Fatal("failed to initialize data source: %v", err)
+	}
+	if ds == nil {
+		log.Fatal("failed to initialize data source.")
+	}
+	tp.master = ds
+
+	tp.features = features
+	for _, tenant := range tp.tenants {
+		_, err := newConnection(*tenant.ID, tenant.DatabaseUrl, tp.migrationsFS, features)
+		if err != nil {
+			log.Fatal("failed to initialize data source for tenant %s: %v", *tenant.ID, err)
+		}
+
+	}
+	return nil
+}
+
+func (tp *FileTenantProvider) Default() f.TenantEntity {
 	return f.TenantEntity{
 		DatabaseUrl: tp.defaultDatabaseURL,
 	}
 }
 
-func (tp *FixedTenantProvider) GetTenantList(ctx context.Context) ([]f.TenantEntity, error) {
+func (tp *FileTenantProvider) GetTenantList(ctx context.Context) ([]f.TenantEntity, error) {
 	tenants := []f.TenantEntity{}
 	for _, tenant := range tp.tenants {
 		tenants = append(tenants, tenant)
@@ -217,14 +254,14 @@ func (tp *FixedTenantProvider) GetTenantList(ctx context.Context) ([]f.TenantEnt
 	return tenants, nil
 }
 
-func (tp *FixedTenantProvider) GetTenant(ctx context.Context, id string) (*f.TenantEntity, error) {
+func (tp *FileTenantProvider) GetTenant(ctx context.Context, id string) (*f.TenantEntity, error) {
 	if tenant, ok := tp.tenants[id]; ok {
 		return &tenant, nil
 	}
 	return nil, nil
 }
 
-func (tp *FixedTenantProvider) TenantExists(ctx context.Context, id string) (bool, error) {
+func (tp *FileTenantProvider) TenantExists(ctx context.Context, id string) (bool, error) {
 	if _, ok := tp.tenants[id]; ok {
 		return true, nil
 	}

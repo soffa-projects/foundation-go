@@ -2,6 +2,7 @@ package f
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 
 	"github.com/soffa-projects/foundation-go/h"
@@ -50,8 +51,19 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 		Env:    env,
 		Router: router,
 	}
+	features = checkFeatures(features...)
+	if env.TenantProvider != nil {
+		if err := env.TenantProvider.Init(features); err != nil {
+			log.Fatal("failed to initialize tenant provider: %v", err)
+		}
+	}
+	if env.DS != nil {
+		if err := env.DS.Init(env, features); err != nil {
+			log.Fatal("failed to initialize data source: %v", err)
+		}
+	}
 	for _, feature := range features {
-		_ = feature(app)
+		feature.InitRoutes(app.Router)
 	}
 	return app
 }
@@ -60,7 +72,12 @@ type FeatureSpec struct {
 	//ApplyPatch func(ctx context.Context, db DB, patch int) (bool, error)
 }
 
-type Feature func(app App) error
+type Feature struct {
+	Name       string
+	FS         fs.FS
+	DependsOn  []Feature
+	InitRoutes func(router Router)
+}
 
 func (app App) Start(port int) {
 	// start scheduler
@@ -114,4 +131,85 @@ func (env *ApplicationEnv) Config(key string) string {
 
 func (env *ApplicationEnv) SetConfig(values map[string]string) {
 	env.config = values
+}
+
+type TenantInput struct {
+	Tenant string `param:"tenant" header:"X-TenantId" json:"-" validate:"required"`
+}
+
+func checkFeatures(features ...Feature) []Feature {
+	featureMap := make(map[string]bool, len(features))
+	loadedFeatures := []Feature{}
+	for _, f := range features {
+		if f.Name == "" {
+			log.Fatal("feature name is required")
+		}
+		if _, ok := featureMap[f.Name]; ok {
+			log.Fatal("feature name %s is already registered", f.Name)
+		}
+		featureMap[f.Name] = true
+		loadedFeatures = append(loadedFeatures, f)
+	}
+	// make sure dependencies are loaded
+	for _, f := range loadedFeatures {
+		for _, dep := range f.DependsOn {
+			if _, ok := featureMap[dep.Name]; !ok {
+				loadedFeatures = append(loadedFeatures, dep)
+				featureMap[dep.Name] = true
+			}
+		}
+	}
+	return orderFeatures(loadedFeatures)
+}
+
+func orderFeatures(features []Feature) []Feature {
+	// Map features by name for lookup
+	featureMap := make(map[string]Feature, len(features))
+	for _, f := range features {
+		featureMap[f.Name] = f
+	}
+
+	visited := make(map[string]bool)
+	temp := make(map[string]bool) // for cycle detection
+	var ordered []Feature
+
+	var visit func(string) error
+
+	visit = func(name string) error {
+		if visited[name] {
+			return nil
+		}
+		if temp[name] {
+			log.Fatal("cyclic dependency detected: %s", name)
+		}
+
+		temp[name] = true
+		feat, ok := featureMap[name]
+		if !ok {
+			return fmt.Errorf("unknown dependency: %s", name)
+		}
+
+		for _, dep := range feat.DependsOn {
+			if err := visit(dep.Name); err != nil {
+				return err
+			}
+		}
+
+		temp[name] = false
+		visited[name] = true
+		ordered = append(ordered, feat)
+		return nil
+	}
+
+	// Visit all features
+	for _, f := range features {
+		if !visited[f.Name] {
+			if err := visit(f.Name); err != nil {
+				log.Fatal("error visiting feature: %s -- %v", f.Name, err)
+				return nil
+			}
+		}
+	}
+
+	return ordered
 }

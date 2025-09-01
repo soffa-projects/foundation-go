@@ -2,6 +2,7 @@ package test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,9 +26,10 @@ type HttpRes struct {
 }
 
 type HttpReq struct {
-	Body   any
-	Bearer string
-	Result any
+	Body    any
+	Headers map[string]string
+	Bearer  string
+	Result  any
 }
 
 type ApiDef struct {
@@ -82,23 +84,30 @@ func (c *RestClient) SetBearerAuth(token string) *RestClient {
 func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes {
 	q := c.client.R()
 	var result map[string]any
-	hasAuth := false
+	bearerAuth := ""
 	for _, opt := range opts {
 		if opt.Body != nil {
 			q = q.SetBody(opt.Body)
 		}
 		if opt.Bearer != "" {
-			q = q.SetHeader("Authorization", "Bearer "+opt.Bearer)
-			hasAuth = true
+			bearerAuth = opt.Bearer
 		}
 		if opt.Result != nil {
 			q = q.SetResult(opt.Result)
 		} else {
 			q = q.SetResult(&result)
 		}
+		if opt.Headers != nil {
+			for key, value := range opt.Headers {
+				q = q.SetHeader(key, value)
+			}
+		}
 	}
-	if !hasAuth && c.bearer != "" {
-		q = q.SetHeader("Authorization", "Bearer "+c.bearer)
+	if bearerAuth == "" && c.bearer != "" {
+		bearerAuth = c.bearer
+	}
+	if bearerAuth != "" {
+		q = q.SetHeader("Authorization", fmt.Sprintf("Bearer %s", bearerAuth))
 	}
 	resp, err := q.Execute(method, path)
 	return HttpRes{

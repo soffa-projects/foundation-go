@@ -14,6 +14,7 @@ type MultiTenantDataSource struct {
 	migrationsFS   fs.FS
 	tenants        map[string]f.Connection
 	tenantProvider f.TenantProvider
+	features       []f.Feature
 }
 
 type DefaultDataSource struct {
@@ -27,14 +28,20 @@ const _defaultTenantId = "default"
 // DATA SOURCE IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-func NewMultiTenantDS(tenantProvider f.TenantProvider) *MultiTenantDataSource {
+func NewMultiTenantDS() f.DataSource {
 	ds := &MultiTenantDataSource{
-		tenants:        make(map[string]f.Connection),
-		tenantProvider: tenantProvider,
+		tenants: make(map[string]f.Connection),
 	}
+	return ds
+}
 
-	defaultTenant := tenantProvider.Default()
-	cnx, err := newConnection(_defaultTenantId, defaultTenant.DatabaseUrl, nil)
+func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature) error {
+	if env.TenantProvider == nil {
+		return fmt.Errorf("TENANT_PROVIDER_REQUIRED")
+	}
+	ds.tenantProvider = env.TenantProvider
+	defaultTenant := env.TenantProvider.Default()
+	cnx, err := newConnection(_defaultTenantId, defaultTenant.DatabaseUrl, nil, nil)
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize data source: %v", err))
 	}
@@ -43,10 +50,13 @@ func NewMultiTenantDS(tenantProvider f.TenantProvider) *MultiTenantDataSource {
 		log.Fatal("failed to initialize data source: %v", err)
 	}
 	log.Info("multi tenant data source initialized with %d tenants", len(ds.tenants))
-	return ds
+	return nil
 }
 
 func (ds *MultiTenantDataSource) init() error {
+	if ds.tenantProvider == nil {
+		return fmt.Errorf("tenant provider is not set")
+	}
 	tenantList, err := ds.tenantProvider.GetTenantList(context.Background())
 	if err != nil {
 		return err
@@ -56,7 +66,7 @@ func (ds *MultiTenantDataSource) init() error {
 		tenantId := *tenant.ID
 		tenantSlug := *tenant.Slug
 		if _, ok := ds.tenants[tenantId]; !ok {
-			cnx, err := newConnection(tenantId, tenant.DatabaseUrl, ds.migrationsFS)
+			cnx, err := newConnection(tenantId, tenant.DatabaseUrl, ds.migrationsFS, ds.features)
 			if err != nil {
 				return err
 			}
@@ -81,34 +91,16 @@ func (ds *MultiTenantDataSource) Connection(id string) f.Connection {
 	panic(fmt.Sprintf("tenant connexion %s not found", id))
 }
 
-func newConnection(id string, databaseUrl string, migrationsFS fs.FS) (f.Connection, error) {
+func newConnection(id string, databaseUrl string, migrationsFS fs.FS, features []f.Feature) (f.Connection, error) {
 	cnx := connectionImpl{
 		Id:      id,
 		Url:     databaseUrl,
 		Default: id == _defaultTenantId,
 	}
-	err := cnx.configure(migrationsFS)
+	err := cnx.configure(migrationsFS, features)
 	if err != nil {
 		return nil, err
 	}
 	cnx.initialized = true
 	return cnx, nil
-}
-
-// ------------------------------------------------------------------------------------------------------------------
-// SIMPLE DATA SOURCE IMPL
-// ------------------------------------------------------------------------------------------------------------------
-
-func NewDefaultDataSource(databaseURL string, opts ...f.DSOpt) f.Connection {
-	var migrationsFS fs.FS
-	for _, opt := range opts {
-		if opt.MigrationsFS != nil {
-			migrationsFS = opt.MigrationsFS
-		}
-	}
-	cnx, err := newConnection(_defaultTenantId, databaseURL, migrationsFS)
-	if err != nil {
-		return nil
-	}
-	return cnx
 }
