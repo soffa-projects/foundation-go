@@ -19,10 +19,9 @@ type App struct {
 }
 
 type RouterConfig struct {
-	AllowOrigins  []string
-	SessionSecret string
-	AssetsFS      fs.FS
-	FaviconFS     fs.FS
+	AllowOrigins []string
+	AssetsFS     fs.FS
+	FaviconFS    fs.FS
 }
 
 type LocalesConfig struct {

@@ -42,15 +42,19 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e.Use(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
 
-	e.StaticFS("/assets", cfg.AssetsFS)
-	e.FileFS("/favicon.ico", "favicon.ico", cfg.FaviconFS)
+	if cfg.AssetsFS != nil {
+		e.StaticFS("/assets", cfg.AssetsFS)
+	}
+	if cfg.FaviconFS != nil {
+		e.FileFS("/favicon.ico", "favicon.ico", cfg.FaviconFS)
+	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	//e.Use(session.MiddlewareWithConfig(session.Config{}))
-	if cfg.SessionSecret != "" {
+	/*if cfg.SessionSecret != "" {
 		e.Logger.Info("session secret found, enabling session middleware")
 		e.Use(session.Middleware(sessions.NewCookieStore([]byte(cfg.SessionSecret))))
-	}
+	}*/
 
 	if cfg != nil && cfg.AllowOrigins != nil {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
