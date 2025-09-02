@@ -28,6 +28,7 @@ type HttpRes struct {
 type HttpReq struct {
 	Body    any
 	Headers map[string]string
+	Files   map[string]string
 	Bearer  string
 	Result  any
 }
@@ -40,7 +41,7 @@ type ApiDef struct {
 	Result any
 }
 
-func ProjectRoo(t *testing.T) string {
+func ProjectRoot(t *testing.T) string {
 	t.Helper()
 
 	dir, err := os.Getwd()
@@ -101,6 +102,9 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 			for key, value := range opt.Headers {
 				q = q.SetHeader(key, value)
 			}
+		}
+		if opt.Files != nil {
+			q = q.SetFiles(opt.Files)
 		}
 	}
 	if bearerAuth == "" && c.bearer != "" {

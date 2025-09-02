@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -85,9 +86,11 @@ func (r *routerImpl) Init(env f.ApplicationEnv) {
 					var permission string
 					var role string
 					var email string
+					var tenantId string
 					_ = token.Get("permission", &permission)
 					_ = token.Get("email", &email)
 					_ = token.Get("role", &role)
+					_ = token.Get("tenantId", &tenantId)
 					//c.Set("authToken", authToken)
 					auth := &f.Authentication{
 						UserId:     sub,
@@ -95,8 +98,12 @@ func (r *routerImpl) Init(env f.ApplicationEnv) {
 						Permission: permission,
 						Email:      email,
 						Role:       role,
+						TenantId:   tenantId,
 					}
 					c.Set(_authKey, auth)
+					if tenantId != "" {
+						c.Set(_tenantIdKey, tenantId)
+					}
 				}
 			}
 			c.Set(_authTokenKey, authToken)
@@ -434,6 +441,17 @@ func mapError(c echo.Context, status int, kind string, error any) error {
 
 func (c *ctxImpl) Param(value string) string {
 	return c.internal.Param(value)
+}
+func (c *ctxImpl) FormFile(field string) (io.ReadCloser, error) {
+	file, err := c.internal.FormFile(field)
+	if err != nil {
+		return nil, err
+	}
+	src, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	return src, nil
 }
 
 func (c *ctxImpl) Header(value string) string {

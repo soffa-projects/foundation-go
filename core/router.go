@@ -3,6 +3,7 @@ package f
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/a-h/templ"
@@ -50,6 +51,7 @@ type Context interface {
 	//WithConnection(conn Connection) Context
 
 	Bind(input any)
+	FormFile(key string) (io.ReadCloser, error)
 	ShouldBind(input any) error
 	Param(value string) string
 	Header(value string) string
@@ -86,6 +88,7 @@ type Authentication struct {
 	Role       string
 	Permission string
 	Email      string
+	TenantId   string
 }
 
 type RedirectResponse struct {

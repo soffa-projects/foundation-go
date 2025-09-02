@@ -42,6 +42,7 @@ type ApplicationEnv struct {
 	TenantProvider TenantProvider
 	TokenProvider  TokenProvider
 	EmailSender    EmailSender
+	PubSubProvider PubSubProvider
 	config         map[string]string
 }
 
@@ -66,6 +67,12 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 			log.Fatal("failed to initialize data source: %v", err)
 		}
 	}
+	if env.PubSubProvider != nil {
+		if err := env.PubSubProvider.Init(); err != nil {
+			log.Fatal("failed to initialize pubsub provider: %v", err)
+		}
+		Register(PubSubProviderKey, env.PubSubProvider)
+	}
 	router.Init(env)
 
 	app := App{
@@ -75,6 +82,7 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 	for _, feature := range features {
 		feature.InitRoutes(app.Router)
 	}
+
 	return app
 }
 

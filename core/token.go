@@ -8,16 +8,18 @@ import (
 
 type JwtConfig struct {
 	Issuer           string
+	SecretKey        string
 	JwkPrivateBase64 string
 	JwkPublicBase64  string
 }
 
 type CreateJwtConfig struct {
-	Subject  string
-	Issuer   string
-	Audience []string
-	Claims   map[string]any
-	Ttl      time.Duration
+	Subject   string
+	SecretKey string
+	Issuer    string
+	Audience  []string
+	Claims    map[string]any
+	Ttl       time.Duration
 }
 
 type TokenProvider interface {

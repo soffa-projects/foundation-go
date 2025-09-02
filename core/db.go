@@ -30,6 +30,10 @@ type Connection interface {
 	DeleteBy(ctx context.Context, model Entity, where string, args ...any) error
 }
 
+type EntityID struct {
+	ID string `bun:",pk" json:"id"`
+}
+
 // ------------------------------------------------------------------------------------------------------------------
 // TX IMPL
 // ------------------------------------------------------------------------------------------------------------------

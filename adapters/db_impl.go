@@ -129,6 +129,10 @@ func (t *connectionImpl) configure(migrationsFS []fs.FS) error {
 
 func (t connectionImpl) migrate(dir fs.FS, path string) error {
 
+	if dir == nil {
+		return nil
+	}
+
 	// Check if there are any *.sql files in the migration directory
 	entries, err := fs.ReadDir(dir, path)
 	if err != nil {

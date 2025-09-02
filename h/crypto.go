@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -60,4 +63,37 @@ func HashPassword(password string) string {
 
 func ComparePassword(password, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
+}
+
+type JwtConfig struct {
+	Subject   string
+	SecretKey string
+	Issuer    string
+	Audience  []string
+	Claims    map[string]any
+	Ttl       time.Duration
+}
+
+func NewJwt(cfg JwtConfig) (string, error) {
+	issuer := cfg.Issuer
+	builder := jwt.NewBuilder().
+		JwtID(NewId("")).
+		Issuer(issuer).
+		IssuedAt(time.Now()).
+		Subject(cfg.Subject).
+		Audience(cfg.Audience).
+		Expiration(time.Now().Add(cfg.Ttl))
+	for k, v := range cfg.Claims {
+		builder.Claim(k, v)
+	}
+	tok, err := builder.Build()
+	if err != nil {
+		return "", err
+	}
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.HS256(), []byte(cfg.SecretKey)))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %s", err)
+	}
+
+	return string(signed), nil
 }

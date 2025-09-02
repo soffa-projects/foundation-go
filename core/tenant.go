@@ -15,7 +15,10 @@ type TenantProviderConfig struct {
 
 func TenantMiddleware(c Context) error {
 	env := c.Env()
-	tenantId := c.Param("tenant")
+	tenantId := c.TenantId()
+	if tenantId == "" {
+		tenantId = c.Param("tenant")
+	}
 	if tenantId == "" {
 		tenantId = c.Header("X-TenantId")
 	}
