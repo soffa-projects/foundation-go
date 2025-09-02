@@ -8,6 +8,10 @@ import (
 	"github.com/soffa-projects/foundation-go/log"
 )
 
+type TenantInput struct {
+	Tenant string `param:"tenant" header:"X-TenantId" json:"-" validate:"required"`
+}
+
 type TenantProviderConfig struct {
 	DefaultDatabaseURL string
 	MigrationsFS       fs.FS

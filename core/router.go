@@ -4,10 +4,18 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 
 	"github.com/a-h/templ"
 )
+
+type RouterConfig struct {
+	AllowOrigins  []string
+	AssetsFS      fs.FS
+	FaviconFS     fs.FS
+	SessionSecret string
+}
 
 type Methods struct {
 	GET    HandlerInit

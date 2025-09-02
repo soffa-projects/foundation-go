@@ -124,7 +124,7 @@ func parseEmailMessage(msg *f.EmailMessage) error {
 	}
 	templateDir := msg.TemplateFS
 	if msg.Template != "" {
-		tpl, err := template.ParseFS(templateDir, fmt.Sprintf("templates/emails/%s.html", msg.Template))
+		tpl, err := template.ParseFS(templateDir, fmt.Sprintf("emails/%s.html", msg.Template))
 		if err != nil {
 			return err
 		}
@@ -135,7 +135,7 @@ func parseEmailMessage(msg *f.EmailMessage) error {
 		}
 		msg.Html = htmlContent.String()
 
-		tpl, err = template.ParseFS(templateDir, fmt.Sprintf("templates/emails/%s.txt", msg.Template))
+		tpl, err = template.ParseFS(templateDir, fmt.Sprintf("emails/%s.txt", msg.Template))
 		if err != nil {
 			return err
 		}
