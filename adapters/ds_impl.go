@@ -11,10 +11,9 @@ import (
 
 type MultiTenantDataSource struct {
 	f.DataSource
-	migrationsFS   fs.FS
+	migrationsFS   []fs.FS
 	tenants        map[string]f.Connection
 	tenantProvider f.TenantProvider
-	features       []f.Feature
 }
 
 type DefaultDataSource struct {
@@ -41,7 +40,20 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 	}
 	ds.tenantProvider = env.TenantProvider
 	defaultTenant := env.TenantProvider.Default()
-	cnx, err := newConnection(_defaultTenantId, defaultTenant.DatabaseUrl, nil, nil)
+
+	migrationsFS := []fs.FS{}
+	for _, feature := range features {
+		if feature.FS != nil {
+			migrationsFS = append(migrationsFS, feature.FS)
+		}
+	}
+	ds.migrationsFS = migrationsFS
+
+	cnx, err := NewConnection(ConnectionConfig{
+		Id:           _defaultTenantId,
+		DatabaseUrl:  defaultTenant.DatabaseUrl,
+		MigrationsFS: migrationsFS,
+	})
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize data source: %v", err))
 	}
@@ -63,10 +75,14 @@ func (ds *MultiTenantDataSource) init() error {
 	}
 
 	for _, tenant := range tenantList {
-		tenantId := *tenant.ID
-		tenantSlug := *tenant.Slug
+		tenantId := tenant.ID
+		tenantSlug := tenant.Slug
 		if _, ok := ds.tenants[tenantId]; !ok {
-			cnx, err := newConnection(tenantId, tenant.DatabaseUrl, ds.migrationsFS, ds.features)
+			cnx, err := NewConnection(ConnectionConfig{
+				Id:           tenantId,
+				DatabaseUrl:  tenant.DatabaseUrl,
+				MigrationsFS: ds.migrationsFS,
+			})
 			if err != nil {
 				return err
 			}
@@ -91,13 +107,19 @@ func (ds *MultiTenantDataSource) Connection(id string) f.Connection {
 	panic(fmt.Sprintf("tenant connexion %s not found", id))
 }
 
-func newConnection(id string, databaseUrl string, migrationsFS fs.FS, features []f.Feature) (f.Connection, error) {
+type ConnectionConfig struct {
+	Id           string
+	DatabaseUrl  string
+	MigrationsFS []fs.FS
+}
+
+func NewConnection(config ConnectionConfig) (f.Connection, error) {
 	cnx := connectionImpl{
-		Id:      id,
-		Url:     databaseUrl,
-		Default: id == _defaultTenantId,
+		Id:      config.Id,
+		Url:     config.DatabaseUrl,
+		Default: config.Id == _defaultTenantId,
 	}
-	err := cnx.configure(migrationsFS, features)
+	err := cnx.configure(config.MigrationsFS)
 	if err != nil {
 		return nil, err
 	}

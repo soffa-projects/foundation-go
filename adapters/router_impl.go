@@ -27,7 +27,7 @@ const _tenantIdKey = "tenantId"
 const _envKey = "env"
 const _connectionKey = "connection"
 
-func NewEchoRouter(env f.ApplicationEnv, cfg *f.RouterConfig) f.Router {
+func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e := echo.New()
 	e.Use(prettylogger.Logger)
 	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
@@ -59,7 +59,15 @@ func NewEchoRouter(env f.ApplicationEnv, cfg *f.RouterConfig) f.Router {
 		}))
 	}
 
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+	return &routerImpl{
+		internal: e,
+	}
+}
+
+func (r *routerImpl) Init(env f.ApplicationEnv) {
+	r.env = env
+
+	r.internal.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			c.Set(_tenantIdKey, "")
 			c.Set(_authKey, (*f.Authentication)(nil))
@@ -95,12 +103,6 @@ func NewEchoRouter(env f.ApplicationEnv, cfg *f.RouterConfig) f.Router {
 			return next(c)
 		}
 	})
-
-	return &routerImpl{
-		internal:   e,
-		production: env.Production,
-		env:        env,
-	}
 }
 
 func (r *routerImpl) Handler() http.Handler {
@@ -186,16 +188,14 @@ func (c *ctxImpl) UserAgent() string {
 }
 
 type routerImpl struct {
-	internal   *echo.Echo
-	production bool
-	env        f.ApplicationEnv
+	internal *echo.Echo
+	env      f.ApplicationEnv
 }
 
 type groupRouterImpl struct {
 	f.RouterGroup
-	internal   *echo.Group
-	production bool
-	env        f.ApplicationEnv
+	internal *echo.Group
+	env      f.ApplicationEnv
 }
 
 func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGroup {
@@ -217,9 +217,8 @@ func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGro
 		}
 	}
 	return &groupRouterImpl{
-		internal:   g,
-		production: r.production,
-		env:        r.env,
+		internal: g,
+		env:      r.env,
 	}
 }
 
@@ -350,7 +349,7 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 				return formatResponse(c, err)
 			}
 
-			result = handler.Handle(rc.WithValue(f.ConnectionKey{}, tx))
+			result = handler.Handle(rc.WithValue(f.TenantCnx{}, tx).WithValue(f.DefaultCnx{}, env.DS.Connection("default")))
 
 		} else {
 			result = handler.Handle(rc)

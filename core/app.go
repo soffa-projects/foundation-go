@@ -47,11 +47,15 @@ type ApplicationEnv struct {
 
 func Init(env ApplicationEnv, router Router, features []Feature) App {
 	h.InitIdGenerator(0)
-	app := App{
-		Env:    env,
-		Router: router,
-	}
+
 	features = checkFeatures(features...)
+	for _, feature := range features {
+		if feature.Init != nil {
+			if err := feature.Init(&env); err != nil {
+				log.Fatal("failed to initialize feature %s: %v", feature.Name, err)
+			}
+		}
+	}
 	if env.TenantProvider != nil {
 		if err := env.TenantProvider.Init(features); err != nil {
 			log.Fatal("failed to initialize tenant provider: %v", err)
@@ -61,6 +65,12 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 		if err := env.DS.Init(env, features); err != nil {
 			log.Fatal("failed to initialize data source: %v", err)
 		}
+	}
+	router.Init(env)
+
+	app := App{
+		Env:    env,
+		Router: router,
 	}
 	for _, feature := range features {
 		feature.InitRoutes(app.Router)
@@ -76,6 +86,7 @@ type Feature struct {
 	Name       string
 	FS         fs.FS
 	DependsOn  []Feature
+	Init       func(env *ApplicationEnv) error
 	InitRoutes func(router Router)
 }
 

@@ -69,7 +69,7 @@ func (t connectionImpl) Rollback() error {
 	return nil
 }
 
-func (t *connectionImpl) configure(migrationsFS fs.FS, features []f.Feature) error {
+func (t *connectionImpl) configure(migrationsFS []fs.FS) error {
 	var (
 		sqldb   *sql.DB
 		db      *bun.DB
@@ -110,40 +110,16 @@ func (t *connectionImpl) configure(migrationsFS fs.FS, features []f.Feature) err
 	t.db = db
 	t.dialect = dialect
 
-	sharedMigrations := "db/migrations/shared"
-	tenantMigrations := "db/migrations/tenant"
-
-	orderedFeatures := []f.Feature{}
-	for _, feature := range features {
-		if feature.FS != nil {
-			orderedFeatures = append(orderedFeatures, feature)
-		}
-	}
-
+	var path string
 	if t.Default {
-		if migrationsFS != nil {
-			if err := t.migrate(migrationsFS, sharedMigrations); err != nil {
-				return err
-			}
-		}
-		for _, feature := range orderedFeatures {
-			if feature.FS != nil {
-				if err := t.migrate(feature.FS, sharedMigrations); err != nil {
-					return err
-				}
-			}
-		}
+		path = "db/migrations/shared"
 	} else {
-		if migrationsFS != nil {
-			if err := t.migrate(migrationsFS, tenantMigrations); err != nil {
+		path = "db/migrations/tenant"
+	}
+	if len(migrationsFS) > 0 {
+		for _, dir := range migrationsFS {
+			if err := t.migrate(dir, path); err != nil {
 				return err
-			}
-		}
-		for _, feature := range orderedFeatures {
-			if feature.FS != nil {
-				if err := t.migrate(feature.FS, tenantMigrations); err != nil {
-					return err
-				}
 			}
 		}
 	}

@@ -8,18 +8,18 @@ type DataSource interface {
 }
 
 type Tenant struct {
+	ID          string `json:"id"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
 	DatabaseUrl string `json:"database_url"`
-	ApiKey      string `json:"api_key"`
 }
 
 type TenantProvider interface {
 	Init(features []Feature) error
-	Default() TenantEntity
-	CreateTenant(ctx context.Context, input Tenant) (*TenantEntity, error)
-	GetTenantList(ctx context.Context) ([]TenantEntity, error)
-	GetTenant(ctx context.Context, id string) (*TenantEntity, error)
+	Default() Tenant
+	RegisterTenant(ctx context.Context, tenant Tenant) error
+	GetTenantList(ctx context.Context) ([]Tenant, error)
+	GetTenant(ctx context.Context, id string) (*Tenant, error)
 	TenantExists(ctx context.Context, id string) (bool, error)
 }
 

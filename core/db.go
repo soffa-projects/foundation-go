@@ -2,26 +2,11 @@ package f
 
 import (
 	"context"
-	"time"
-
-	"github.com/uptrace/bun"
 )
 
 type Entity any
-type ConnectionKey struct{}
-
-type TenantEntity struct {
-	Entity        `json:"-"`
-	bun.BaseModel `bun:"table:tenants" `
-	ID            *string    `bun:",pk" json:"id"`
-	Name          *string    `json:"name"`
-	ApiKey        string     `json:"api_key"`
-	Slug          *string    `json:"slug"`
-	Status        *string    `json:"status,omitempty"`
-	DatabaseUrl   string     `json:"-"`
-	CreatedAt     *time.Time `json:"created_at"`
-	UpdatedAt     *time.Time `json:"updated_at"`
-}
+type TenantCnx struct{}
+type DefaultCnx struct{}
 
 type Connection interface {
 	DatabaseUrl() string
@@ -64,8 +49,9 @@ type QueryOpts struct {
 // ------------------------------------------------------------------------------------------------------------------
 
 type Repo struct {
-	cnx Connection
-	Ctx context.Context
+	cnx           Connection
+	Ctx           context.Context
+	DefaultTenant bool
 }
 
 func NewRepo(cnx Connection) Repo {
@@ -74,8 +60,13 @@ func NewRepo(cnx Connection) Repo {
 	}
 }
 
-func ds(ctx context.Context) Connection {
-	value := ctx.Value(ConnectionKey{})
+func ds(ctx context.Context, defaultTenant bool) Connection {
+	var value any
+	if defaultTenant {
+		value = ctx.Value(DefaultCnx{})
+	} else {
+		value = ctx.Value(TenantCnx{})
+	}
 	if value == nil {
 		panic("MISSING_DS_IN_CONTEXT")
 	}
@@ -83,11 +74,11 @@ func ds(ctx context.Context) Connection {
 }
 
 func (r *Repo) Insert(ctx context.Context, entity Entity) error {
-	return ds(ctx).Insert(ctx, entity)
+	return ds(ctx, r.DefaultTenant).Insert(ctx, entity)
 }
 
 func (r *Repo) InsertBatch(ctx context.Context, records Entity) error {
-	if err := ds(ctx).InsertBatch(ctx, records); err != nil {
+	if err := ds(ctx, r.DefaultTenant).InsertBatch(ctx, records); err != nil {
 		return err
 	}
 	return nil
@@ -95,7 +86,7 @@ func (r *Repo) InsertBatch(ctx context.Context, records Entity) error {
 
 func (r *Repo) Update(ctx context.Context, entity ...any) error {
 	for _, record := range entity {
-		if err := ds(ctx).Update(ctx, record); err != nil {
+		if err := ds(ctx, r.DefaultTenant).Update(ctx, record); err != nil {
 			return err
 		}
 	}
@@ -104,12 +95,12 @@ func (r *Repo) Update(ctx context.Context, entity ...any) error {
 }
 
 func (r *Repo) UpdateColumns(ctx context.Context, entity Entity, columns ...string) error {
-	return ds(ctx).Update(ctx, entity, columns...)
+	return ds(ctx, r.DefaultTenant).Update(ctx, entity, columns...)
 }
 
 func (r *Repo) Delete(ctx context.Context, entity ...Entity) error {
 	for _, record := range entity {
-		if err := ds(ctx).Delete(ctx, record); err != nil {
+		if err := ds(ctx, r.DefaultTenant).Delete(ctx, record); err != nil {
 			return err
 		}
 	}
@@ -117,25 +108,25 @@ func (r *Repo) Delete(ctx context.Context, entity ...Entity) error {
 }
 
 func (r *Repo) DeleteById(ctx context.Context, model Entity, id string) error {
-	return ds(ctx).DeleteBy(ctx, model, "id=?", id)
+	return ds(ctx, r.DefaultTenant).DeleteBy(ctx, model, "id=?", id)
 }
 
 func (r *Repo) FindBy(ctx context.Context, model Entity, where string, args ...any) (bool, error) {
-	return ds(ctx).FindBy(ctx, model, where, args...)
+	return ds(ctx, r.DefaultTenant).FindBy(ctx, model, where, args...)
 }
 
 func (r *Repo) ExistsBy(ctx context.Context, model Entity, where string, args ...any) (bool, error) {
-	return ds(ctx).ExistsBy(ctx, model, where, args...)
+	return ds(ctx, r.DefaultTenant).ExistsBy(ctx, model, where, args...)
 }
 
 func (r *Repo) CountAll(ctx context.Context, model Entity) (int, error) {
-	return ds(ctx).Count(ctx, model)
+	return ds(ctx, r.DefaultTenant).Count(ctx, model)
 }
 
 func (r *Repo) CountBy(ctx context.Context, model Entity, where string, args ...any) (int, error) {
-	return ds(ctx).CountBy(ctx, model, where, args...)
+	return ds(ctx, r.DefaultTenant).CountBy(ctx, model, where, args...)
 }
 
 func (r *Repo) Query(ctx context.Context, model Entity, opts QueryOpts) (bool, error) {
-	return ds(ctx).Query(ctx, model, opts)
+	return ds(ctx, r.DefaultTenant).Query(ctx, model, opts)
 }

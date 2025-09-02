@@ -25,6 +25,7 @@ type RouterGroup interface {
 }
 
 type Router interface {
+	Init(env ApplicationEnv)
 	Handler() http.Handler
 	Listen(port int)
 	Shutdown(ctx context.Context) error
