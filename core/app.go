@@ -43,6 +43,7 @@ type ApplicationEnv struct {
 	TokenProvider  TokenProvider
 	EmailSender    EmailSender
 	PubSubProvider PubSubProvider
+	SecretProvider SecretsProvider
 	config         map[string]string
 }
 
@@ -73,6 +74,12 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 		}
 		Register(PubSubProviderKey, env.PubSubProvider)
 	}
+	if env.SecretProvider != nil {
+		if err := env.SecretProvider.Init(); err != nil {
+			log.Fatal("failed to initialize secret provider: %v", err)
+		}
+		Register(SecretProviderKey, env.SecretProvider)
+	}
 	router.Init(env)
 
 	app := App{
@@ -99,31 +106,9 @@ type Feature struct {
 }
 
 func (app App) Start(port int) {
-	// start scheduler
-
-	/*
-		rootCtx, cancel := context.WithCancel(app.Context)
-		// Set up graceful shutdown
-		go func() {
-			quit := make(chan os.Signal, 1)
-			signal.Notify(quit, os.Interrupt)
-			<-quit
-			LogInfo("shutdown notice received ...")
-			ctx, shutdownCancel := context.WithTimeout(rootCtx, 5*time.Second)
-			defer shutdownCancel()
-			app.Shutdown(ctx)
-			cancel() // Cancel the Redis listener when the server is shutting down
-		}()
-
-		defer cancel()
-
-
-			go func() {
-				LogInfo("starting cron scheduler")
-				//app.Scheduler.Start()
-			}()
-	*/
-
+	defer func() {
+		app.Shutdown(context.Background())
+	}()
 	log.Info("starting webserver")
 	app.Router.Listen(port)
 }
@@ -132,8 +117,12 @@ func (app App) Shutdown(ctx context.Context) {
 	if err := app.Router.Shutdown(ctx); err != nil {
 		log.Error("error shutting down server: %v", err)
 	}
+	if app.Env.SecretProvider != nil {
+		if err := app.Env.SecretProvider.Close(); err != nil {
+			log.Error("error shutting down secret provider: %v", err)
+		}
+	}
 	log.Info("shutdown complete")
-	//app.Scheduler.Stop()
 }
 
 // Init initializes the global generator

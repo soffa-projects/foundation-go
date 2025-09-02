@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"net/url"
 
 	"github.com/resend/resend-go/v2"
 	f "github.com/soffa-projects/foundation-go/core"
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
 )
 
@@ -36,14 +36,6 @@ type ResendEmailProvider struct {
 	BaseEmailProvider
 	client *resend.Client
 	sender string
-}
-
-type mailProviderConfig struct {
-	Scheme      string            // "mail"
-	APIKey      string            // "apikey"
-	APIPassword string            // "apipassword" (optional)
-	Host        string            // "resend"
-	QueryParams map[string]string // all query parameters
 }
 
 func newResendEmailProvider(apikey string, sender string) f.EmailSender {
@@ -157,55 +149,26 @@ func parseEmailMessage(msg *f.EmailMessage) error {
 	return nil
 }
 
-func NewEmailSender(provider string) f.EmailSender {
-	cfg, err := parseProviderUrl(provider)
+func NewEmailSender(senderName string, provider string) f.EmailSender {
+	cfg, err := h.ParseUrl(provider)
 	if err != nil {
 		log.Fatal("failed to parse email provider: %v", err)
 	}
-	appName := cfg.QueryParams["appName"]
-	sender := cfg.QueryParams["sender"]
+	sender := cfg.Query("from")
 	if sender == "" {
-		log.Fatal("sender is required")
+		sender := cfg.Query("sender")
+		if sender == "" {
+			log.Fatal("sender is required")
+		}
 	}
 
-	fullSender := fmt.Sprintf("%s <%s>", appName, sender)
-	switch cfg.Host {
+	fullSender := fmt.Sprintf("%s <%s>", senderName, sender)
+	switch cfg.Scheme {
 	case "resend":
-		return newResendEmailProvider(cfg.APIKey, fullSender)
+		return newResendEmailProvider(cfg.User, fullSender)
 	case "faker":
 		return newFakeEmailProvider("", fullSender)
 	}
-	log.Fatal("unsupported email provider: %s", cfg.Host)
+	log.Fatal("unsupported email provider: %s", cfg.Scheme)
 	return nil
-}
-
-func parseProviderUrl(provider string) (*mailProviderConfig, error) {
-	// Parse the URL
-	u, err := url.Parse(provider)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse email provider: %w", err)
-	}
-
-	cfg := &mailProviderConfig{
-		Scheme:      u.Scheme,
-		Host:        u.Host,
-		QueryParams: make(map[string]string),
-	}
-
-	// Extract API key and password from user info
-	if u.User != nil {
-		cfg.APIKey = u.User.Username()
-		if password, hasPassword := u.User.Password(); hasPassword {
-			cfg.APIPassword = password
-		}
-	}
-
-	// Parse query parameters into map
-	for key, values := range u.Query() {
-		if len(values) > 0 {
-			cfg.QueryParams[key] = values[0] // Take first value if multiple
-		}
-	}
-
-	return cfg, nil
 }
