@@ -21,16 +21,21 @@ func TenantMiddleware(c Context) error {
 	env := c.Env()
 	tenantId := c.TenantId()
 	if tenantId == "" {
+
 		tenantId = c.Param("tenant")
+		log.Info("detecting tenant from param: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.QueryParam("tid")
+		log.Info("detecting tenant from query param: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.Header("X-TenantId")
+		log.Info("detecting tenant from header: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.Host()
+		log.Info("detecting tenant from host: %s", tenantId)
 	}
 	if tenantId != "" {
 		if env.TenantProvider == nil {
@@ -45,7 +50,7 @@ func TenantMiddleware(c Context) error {
 			log.Info("invalid tenant received: %s", tenantId)
 			return c.BadRequest("INVALID_TENANT")
 		}
-		c.SetTenant(tenantId)
+		c.SetTenant(exists.ID)
 	} else {
 		return c.BadRequest("TENANT_REQUIRED")
 	}
