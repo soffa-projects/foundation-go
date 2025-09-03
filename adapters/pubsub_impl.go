@@ -65,10 +65,10 @@ func (p *RedisPubSubProvider) Init() error {
 func (p *RedisPubSubProvider) Publish(ctx context.Context, topic string, message any) error {
 	err := p.client.Publish(ctx, topic, message).Err()
 	if err != nil {
-		log.Error("failed to publish message: %v", err)
+		log.Error("[redis]failed to publish message: %v", err)
 		return err
 	}
-	log.Info("message published to topic: %s", topic)
+	log.Info("[redis]message published to topic: %s", topic)
 	return nil
 }
 
@@ -84,9 +84,10 @@ func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handl
 					// graceful shutdown
 					return
 				}
-				log.Error("failed to receive message: %v", err)
+				log.Error("[redis] failed to receive message: %v", err)
 				continue
 			}
+			log.Debug("[redis] event received: %s", msg.Payload)
 			go handler(msg.Payload)
 		}
 	}()

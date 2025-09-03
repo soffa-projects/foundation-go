@@ -44,19 +44,19 @@ func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
 	p := cfg.Query("path")
 	mount := cfg.Query("mount")
 	if token == "" {
-		log.Fatal("token is required")
+		log.Fatal("[vault] token is required")
 	}
 	if p == "" {
-		log.Fatal("path is required")
+		log.Fatal("[vault] path is required")
 		decodedValue, err := url.QueryUnescape(p.(string))
 		if err != nil {
-			log.Fatal("failed to decode path: %v", err)
+			log.Fatal("[vault] failed to decode path: %v", err)
 		}
 		p = decodedValue
 
 	}
 	if mount == "" {
-		log.Fatal("mount is required")
+		log.Fatal("[vault] mount is required")
 	}
 	cache, err := ristretto.NewCache(&ristretto.Config[string, string]{
 		NumCounters: 100,    // number of keys to track frequency of (10M).
@@ -64,7 +64,7 @@ func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
 		BufferItems: 64,     // number of keys per Get buffer.
 	})
 	if err != nil {
-		log.Fatal("failed to create cache: %v", err)
+		log.Fatal("[vault] failed to create cache: %v", err)
 	}
 
 	address := fmt.Sprintf("%s://%s", strings.TrimPrefix(cfg.Scheme, "vault+"), cfg.Host)
@@ -76,7 +76,7 @@ func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
 		err = client.SetToken(token)
 	}
 	if err != nil {
-		log.Fatal("failed to create vault client: %v", err)
+		log.Fatal("[vault] failed to create client: %v", err)
 	}
 	return VaultSecretProvider{
 		mount:  mount.(string),
@@ -103,7 +103,7 @@ func (v VaultSecretProvider) Get(ctx context.Context, tenantId string, key strin
 	secretPath := strings.ReplaceAll(v.path, "__tenant__", tenantId)
 	s, err := v.client.Secrets.KvV2Read(ctx, secretPath, vault.WithMountPath(v.mount))
 	if err != nil {
-		log.Fatal("failed to retrieve secret: %v", err)
+		log.Fatal("[vault] failed to retrieve secret: %v", err)
 	}
 	if err != nil {
 		return "", err
