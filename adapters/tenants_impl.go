@@ -115,9 +115,10 @@ type HttpTenantProvider struct {
 
 func NewHttpTenantProvider(cfg h.Url) f.TenantProvider {
 	p := HttpTenantProvider{
-		bearer: cfg.User,
-		target: cfg.Url,
-		client: resty.New(),
+		bearer:  cfg.User,
+		target:  cfg.Url,
+		client:  resty.New(),
+		tenants: make(map[string]f.Tenant),
 	}
 	if _, err := p.Load(context.Background()); err != nil {
 		log.Error("failed to load tenants: %v", err)
