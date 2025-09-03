@@ -2,6 +2,7 @@ package f
 
 import (
 	"context"
+	"io/fs"
 )
 
 type Entity any
@@ -28,6 +29,11 @@ type Connection interface {
 	UpdateBy(ctx context.Context, entity Entity, columns []string, where string, args ...any) (int64, error)
 	Delete(ctx context.Context, model Entity) error
 	DeleteBy(ctx context.Context, model Entity, where string, args ...any) error
+}
+
+type DBManager struct {
+	ChangeLogTable string
+	MigrationsFS   []fs.FS
 }
 
 type EntityID struct {

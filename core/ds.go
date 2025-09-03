@@ -1,9 +1,13 @@
 package f
 
-import "context"
+import (
+	"context"
+	"io/fs"
+)
 
 type DataSource interface {
 	Init(env ApplicationEnv, features []Feature) error
+	DefaultConnection() Connection
 	Connection(tenantId string) Connection
 }
 
@@ -26,4 +30,16 @@ type TenantProvider interface {
 type TenantAlreadyExistsError struct {
 	error
 	Value string
+}
+
+type DataSourceConfig struct {
+	DatabaseUrl string
+	Prefix      string
+	Strategy    string
+	MigrationFS fs.FS
+}
+
+type ConnectionConfig struct {
+	Id          string
+	DatabaseUrl string
 }

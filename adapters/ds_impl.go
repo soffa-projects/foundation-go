@@ -6,6 +6,7 @@ import (
 	"io/fs"
 
 	f "github.com/soffa-projects/foundation-go/core"
+	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
 )
 
@@ -14,12 +15,11 @@ type MultiTenantDataSource struct {
 	migrationsFS   []fs.FS
 	tenants        map[string]f.Connection
 	tenantProvider f.TenantProvider
-	databaseURL    string
+	cfg            f.DataSourceConfig
 }
 
 type DefaultDataSource struct {
 	f.DataSource
-	DatabaseURL string
 }
 
 const _defaultTenantId = "default"
@@ -28,11 +28,16 @@ const _defaultTenantId = "default"
 // DATA SOURCE IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-func NewMultiTenantDS(databaseURL string) f.DataSource {
+func NewMultiTenantDS(cfg f.DataSourceConfig) f.DataSource {
 	ds := &MultiTenantDataSource{
-		tenants:     make(map[string]f.Connection),
-		databaseURL: databaseURL,
+		tenants: make(map[string]f.Connection),
+		cfg:     cfg,
 	}
+	migrationsFS := []fs.FS{}
+	if ds.cfg.MigrationFS != nil {
+		migrationsFS = append(migrationsFS, ds.cfg.MigrationFS)
+	}
+	ds.migrationsFS = migrationsFS
 	return ds
 }
 
@@ -41,18 +46,16 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 		return fmt.Errorf("TENANT_PROVIDER_REQUIRED")
 	}
 	ds.tenantProvider = env.TenantProvider
-	migrationsFS := []fs.FS{}
+
 	for _, feature := range features {
 		if feature.FS != nil {
-			migrationsFS = append(migrationsFS, feature.FS)
+			ds.migrationsFS = append(ds.migrationsFS, feature.FS)
 		}
 	}
-	ds.migrationsFS = migrationsFS
-	if ds.databaseURL != "" {
-		cnx, err := NewConnection(ConnectionConfig{
-			Id:           _defaultTenantId,
-			DatabaseUrl:  ds.databaseURL,
-			MigrationsFS: migrationsFS,
+	if ds.cfg.DatabaseUrl != "" {
+		cnx, err := ds.connect(f.ConnectionConfig{
+			Id:          _defaultTenantId,
+			DatabaseUrl: ds.cfg.DatabaseUrl,
 		})
 		if err != nil {
 			panic(fmt.Sprintf("failed to initialize data source: %v", err))
@@ -82,12 +85,16 @@ func (ds *MultiTenantDataSource) init() error {
 		tenantId := tenant.ID
 		tenantSlug := tenant.Slug
 		if _, ok := ds.tenants[tenantId]; !ok {
-			cnx, err := NewConnection(ConnectionConfig{
-				Id:           tenantId,
-				DatabaseUrl:  tenant.DatabaseUrl,
-				MigrationsFS: ds.migrationsFS,
+
+			dbUrl := tenant.DatabaseUrl
+			if ds.cfg.Strategy == "schema" {
+				dbUrl = h.AppendParamToUrl(ds.cfg.DatabaseUrl, "schema", tenantId)
+			}
+			cnx, err := ds.connect(f.ConnectionConfig{
+				Id:          tenantId,
+				DatabaseUrl: dbUrl,
 			})
-			log.Info("tenant %s connection initialized", tenantId)
+			log.Info("tenant %s (%s) connection initialized", tenantId, tenantSlug)
 			if err != nil {
 				return err
 			}
@@ -96,6 +103,10 @@ func (ds *MultiTenantDataSource) init() error {
 		}
 	}
 	return nil
+}
+
+func (ds *MultiTenantDataSource) DefaultConnection() f.Connection {
+	return ds.tenants[_defaultTenantId]
 }
 
 func (ds *MultiTenantDataSource) Connection(id string) f.Connection {
@@ -113,19 +124,13 @@ func (ds *MultiTenantDataSource) Connection(id string) f.Connection {
 	//panic(fmt.Sprintf("tenant connexion %s not found", id))
 }
 
-type ConnectionConfig struct {
-	Id           string
-	DatabaseUrl  string
-	MigrationsFS []fs.FS
-}
-
-func NewConnection(config ConnectionConfig) (f.Connection, error) {
+func (ds *MultiTenantDataSource) connect(config f.ConnectionConfig) (f.Connection, error) {
 	cnx := connectionImpl{
 		Id:      config.Id,
 		Url:     config.DatabaseUrl,
 		Default: config.Id == _defaultTenantId,
 	}
-	err := cnx.configure(config.MigrationsFS)
+	err := cnx.configure(ds.migrationsFS, ds.cfg.Prefix)
 	if err != nil {
 		return nil, err
 	}

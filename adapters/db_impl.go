@@ -33,6 +33,18 @@ type connectionImpl struct {
 	//tx          bool
 }
 
+func NewConnection(databaseUrl string) (f.Connection, error) {
+	cnx := connectionImpl{
+		Url:     databaseUrl,
+		Default: true,
+	}
+	err := cnx.configure(nil, "")
+	if err != nil {
+		return nil, err
+	}
+	return cnx, nil
+}
+
 func (t connectionImpl) Tx(ctx context.Context) (f.Connection, error) {
 	if t.db == nil {
 		return nil, errors.New("database not initialized")
@@ -69,7 +81,7 @@ func (t connectionImpl) Rollback() error {
 	return nil
 }
 
-func (t *connectionImpl) configure(migrationsFS []fs.FS) error {
+func (t *connectionImpl) configure(migrationsFS []fs.FS, prefix string) error {
 	var (
 		sqldb   *sql.DB
 		db      *bun.DB
@@ -116,18 +128,23 @@ func (t *connectionImpl) configure(migrationsFS []fs.FS) error {
 	} else {
 		path = "db/migrations/tenant"
 	}
+	changeLogTable := "database_changelog"
+	if prefix != "" {
+		changeLogTable = fmt.Sprintf("%s_%s", strings.TrimSuffix(prefix, "_"), changeLogTable)
+	}
 	if len(migrationsFS) > 0 {
 		for _, dir := range migrationsFS {
-			if err := t.migrate(dir, path); err != nil {
+			if err := t.migrate(changeLogTable, dir, path); err != nil {
 				return err
 			}
 		}
 	}
 
+	t.initialized = true
 	return nil
 }
 
-func (t connectionImpl) migrate(dir fs.FS, path string) error {
+func (t connectionImpl) migrate(changeLogTable string, dir fs.FS, path string) error {
 
 	if dir == nil {
 		return nil
@@ -155,7 +172,7 @@ func (t connectionImpl) migrate(dir fs.FS, path string) error {
 	if err := goose.SetDialect(t.dialect); err != nil {
 		log.Fatal("failed to set dialect: %v", err)
 	}
-	goose.SetTableName("database_changelog")
+	goose.SetTableName(changeLogTable)
 
 	if t.dialect == "postgres" {
 		schema := "public"

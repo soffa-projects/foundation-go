@@ -64,6 +64,10 @@ func RemoveParamFromUrl(input string, param string) (string, error) {
 }
 
 func AppendParamToUrl(url string, param string, value string) string {
+	url, err := RemoveParamFromUrl(url, param)
+	if err != nil {
+		return url
+	}
 	if strings.Contains(url, "?") {
 		return fmt.Sprintf("%s&%s=%s", url, param, value)
 	} else {
