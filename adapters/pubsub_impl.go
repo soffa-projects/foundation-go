@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 
 	"github.com/go-redis/redis/v8"
 	f "github.com/soffa-projects/foundation-go/core"
@@ -16,8 +17,10 @@ func NewPubSubProvider(provider string) f.PubSubProvider {
 	}
 	switch res.Scheme {
 	case "redis":
+		log.Info("using redis pubsub provider...")
 		return NewRedisPubSubProvider(res)
 	case "fake", "faker", "dummy":
+		log.Info("using fake pubsub provider...")
 		return NewFakePubSubProvider()
 	default:
 		log.Fatal("unsupported pubsub provider: %s", provider)
@@ -45,6 +48,11 @@ func NewRedisPubSubProvider(cfg h.Url) f.PubSubProvider {
 		Password: cfg.Password,
 		DB:       db,
 	})
+	_, err := client.Ping(context.Background()).Result()
+	if err != nil {
+		log.Fatal("failed to ping redis: %v", err)
+	}
+	log.Info("redis connection successful")
 	return &RedisPubSubProvider{
 		client: client,
 	}
@@ -65,15 +73,27 @@ func (p *RedisPubSubProvider) Publish(ctx context.Context, topic string, message
 }
 
 func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message any)) {
-	sub := p.client.Subscribe(ctx, topic)
-	for {
-		msg, err := sub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Error("failed to receive message: %v", err)
-			continue
+	go func() {
+		sub := p.client.Subscribe(ctx, topic)
+		defer sub.Close()
+
+		for {
+			msg, err := sub.ReceiveMessage(ctx)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					// graceful shutdown
+					return
+				}
+				log.Error("failed to receive message: %v", err)
+				continue
+			}
+			go handler(msg.Payload)
 		}
-		go handler(msg.Payload)
-	}
+	}()
+}
+
+func (p *RedisPubSubProvider) Ping() error {
+	return p.client.Ping(context.Background()).Err()
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -93,6 +113,10 @@ func NewFakePubSubProvider() f.PubSubProvider {
 		received:    make(map[string]int),
 		subscribers: make(map[string][]func(message any)),
 	}
+}
+
+func (p *FakePubSubProvider) Ping() error {
+	return nil
 }
 
 func (p *FakePubSubProvider) Init() error {
