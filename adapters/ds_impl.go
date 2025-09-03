@@ -14,6 +14,7 @@ type MultiTenantDataSource struct {
 	migrationsFS   []fs.FS
 	tenants        map[string]f.Connection
 	tenantProvider f.TenantProvider
+	databaseURL    string
 }
 
 type DefaultDataSource struct {
@@ -27,9 +28,10 @@ const _defaultTenantId = "default"
 // DATA SOURCE IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-func NewMultiTenantDS() f.DataSource {
+func NewMultiTenantDS(databaseURL string) f.DataSource {
 	ds := &MultiTenantDataSource{
-		tenants: make(map[string]f.Connection),
+		tenants:     make(map[string]f.Connection),
+		databaseURL: databaseURL,
 	}
 	return ds
 }
@@ -39,7 +41,6 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 		return fmt.Errorf("TENANT_PROVIDER_REQUIRED")
 	}
 	ds.tenantProvider = env.TenantProvider
-	defaultTenant := env.TenantProvider.Default()
 
 	migrationsFS := []fs.FS{}
 	for _, feature := range features {
@@ -51,7 +52,7 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 
 	cnx, err := NewConnection(ConnectionConfig{
 		Id:           _defaultTenantId,
-		DatabaseUrl:  defaultTenant.DatabaseUrl,
+		DatabaseUrl:  ds.databaseURL,
 		MigrationsFS: migrationsFS,
 	})
 	if err != nil {
@@ -62,6 +63,9 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 		log.Fatal("failed to initialize data source: %v", err)
 	}
 	log.Info("multi tenant data source initialized with %d tenants", len(ds.tenants))
+	f.OnEvent(context.Background(), "tenant_created", func(data map[string]any) error {
+		return ds.init()
+	})
 	return nil
 }
 
@@ -83,6 +87,7 @@ func (ds *MultiTenantDataSource) init() error {
 				DatabaseUrl:  tenant.DatabaseUrl,
 				MigrationsFS: ds.migrationsFS,
 			})
+			log.Info("tenant %s connection initialized", tenantId)
 			if err != nil {
 				return err
 			}

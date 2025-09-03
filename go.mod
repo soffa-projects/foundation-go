@@ -10,6 +10,7 @@ require (
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-resty/resty/v2 v2.16.5
+	github.com/gookit/event v1.2.0
 	github.com/gorilla/sessions v1.4.0
 	github.com/hashicorp/vault-client-go v0.4.3
 	github.com/joho/godotenv v1.5.1
@@ -73,6 +74,7 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gookit/goutil v0.7.1 // indirect
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect

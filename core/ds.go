@@ -14,13 +14,13 @@ type Tenant struct {
 	DatabaseUrl string `json:"database_url"`
 }
 
+type TenantList struct {
+	Tenants []Tenant `json:"tenants"`
+}
+
 type TenantProvider interface {
-	Init(features []Feature) error
-	Default() Tenant
-	RegisterTenant(ctx context.Context, tenant Tenant) error
 	GetTenantList(ctx context.Context) ([]Tenant, error)
 	GetTenant(ctx context.Context, id string) (*Tenant, error)
-	TenantExists(ctx context.Context, id string) (bool, error)
 }
 
 type TenantAlreadyExistsError struct {

@@ -40,11 +40,6 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 			}
 		}
 	}
-	if env.TenantProvider != nil {
-		if err := env.TenantProvider.Init(features); err != nil {
-			log.Fatal("failed to initialize tenant provider: %v", err)
-		}
-	}
 	if env.DS != nil {
 		if err := env.DS.Init(env, features); err != nil {
 			log.Fatal("failed to initialize data source: %v", err)

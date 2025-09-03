@@ -4,26 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"os"
 	"strings"
 
+	"github.com/go-resty/resty/v2"
 	f "github.com/soffa-projects/foundation-go/core"
 	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
 )
 
-func NewTenantProvider(provider string, cfg f.TenantProviderConfig) f.TenantProvider {
+func NewTenantProvider(provider string) f.TenantProvider {
 	res, err := h.ParseUrl(provider)
 	if err != nil {
 		log.Fatal("failed to parse tenant provider: %v", err)
 	}
 	if res.Scheme == "file" {
 		log.Info("using file tenant provider: %s", res.Url)
-		return NewFileTenantProvider(res, cfg.DefaultDatabaseURL, cfg.MigrationsFS)
-	} else {
-		log.Fatal("unsupported tenant provider: %s", res.Scheme)
+		return NewFileTenantProvider(res)
 	}
+	if res.Scheme == "https" || res.Scheme == "http" {
+		log.Info("using http tenant provider: %s", res.Url)
+		return NewHttpTenantProvider(res)
+	}
+	log.Fatal("unsupported tenant provider: %s", res.Scheme)
 	return nil
 }
 
@@ -31,25 +34,16 @@ func NewTenantProvider(provider string, cfg f.TenantProviderConfig) f.TenantProv
 // FIXED TENANT PROVIDER IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-type tenantItem struct {
-	ID          string `json:"id"`
-	Slug        string `json:"slug"`
-	DatabaseUrl string `json:"database_url"`
-}
-
 type TenantFile struct {
-	Tenants []tenantItem `json:"tenants"`
+	Tenants []f.Tenant `json:"tenants"`
 }
 
 type FileTenantProvider struct {
 	f.TenantProvider
-	tenants            map[string]f.Tenant
-	master             f.Connection
-	defaultDatabaseURL string
-	migrationsFS       []fs.FS
+	tenants map[string]f.Tenant
 }
 
-func NewFileTenantProvider(cfg h.Url, defaultDatabaseURL string, migrationsFS fs.FS) f.TenantProvider {
+func NewFileTenantProvider(cfg h.Url) f.TenantProvider {
 
 	// Open the JSON file
 	file, err := os.Open(strings.TrimPrefix(cfg.Url, "file://"))
@@ -84,50 +78,12 @@ func NewFileTenantProvider(cfg h.Url, defaultDatabaseURL string, migrationsFS fs
 	}
 
 	return &FileTenantProvider{
-		tenants:            tenants,
-		defaultDatabaseURL: defaultDatabaseURL,
-		migrationsFS:       []fs.FS{migrationsFS},
+		tenants: tenants,
 	}
-}
-
-func (tp *FileTenantProvider) Init(features []f.Feature) error {
-
-	for _, feature := range features {
-		if feature.FS != nil {
-			tp.migrationsFS = append(tp.migrationsFS, feature.FS)
-		}
-	}
-	ds, err := NewConnection(ConnectionConfig{
-		Id:           _defaultTenantId,
-		DatabaseUrl:  tp.defaultDatabaseURL,
-		MigrationsFS: tp.migrationsFS,
-	})
-	if err != nil {
-		log.Fatal("failed to initialize data source: %v", err)
-	}
-	if ds == nil {
-		log.Fatal("failed to initialize data source.")
-	}
-	tp.master = ds
-
-	for _, tenant := range tp.tenants {
-		_, err := NewConnection(ConnectionConfig{
-			Id:           tenant.ID,
-			DatabaseUrl:  tenant.DatabaseUrl,
-			MigrationsFS: tp.migrationsFS,
-		})
-		if err != nil {
-			log.Fatal("failed to initialize data source for tenant %s: %v", tenant.ID, err)
-		}
-
-	}
-	return nil
 }
 
 func (tp *FileTenantProvider) Default() f.Tenant {
-	return f.Tenant{
-		DatabaseUrl: tp.defaultDatabaseURL,
-	}
+	return f.Tenant{}
 }
 
 func (tp *FileTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, error) {
@@ -145,9 +101,42 @@ func (tp *FileTenantProvider) GetTenant(ctx context.Context, id string) (*f.Tena
 	return nil, nil
 }
 
-func (tp *FileTenantProvider) TenantExists(ctx context.Context, id string) (bool, error) {
-	if _, ok := tp.tenants[id]; ok {
-		return true, nil
+// ------------------------------------------------------------------------------------------------------------------
+// HTTP TENANT PROVIDER IMPL
+// ------------------------------------------------------------------------------------------------------------------
+
+type HttpTenantProvider struct {
+	f.TenantProvider
+	tenants map[string]f.Tenant
+	target  string
+	bearer  string
+	client  *resty.Client
+}
+
+func NewHttpTenantProvider(cfg h.Url) f.TenantProvider {
+	return HttpTenantProvider{
+		bearer: cfg.User,
+		target: cfg.Url,
+		client: resty.New(),
 	}
-	return false, nil
+}
+
+func (tp HttpTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, error) {
+	var tenants f.TenantList
+	_, err := tp.client.R().
+		SetResult(&tenants).
+		SetAuthToken(tp.bearer).
+		Get(tp.target)
+
+	if err != nil {
+		return nil, err
+	}
+	return tenants.Tenants, nil
+}
+
+func (tp HttpTenantProvider) GetTenant(ctx context.Context, id string) (*f.Tenant, error) {
+	if tenant, ok := tp.tenants[id]; ok {
+		return &tenant, nil
+	}
+	return nil, nil
 }

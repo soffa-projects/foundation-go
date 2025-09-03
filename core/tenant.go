@@ -31,11 +31,11 @@ func TenantMiddleware(c Context) error {
 			return fmt.Errorf("TENANT_PROVIDER_NOT_SET")
 		}
 		tenantId = strings.ToLower(tenantId)
-		exists, err := env.TenantProvider.TenantExists(c, tenantId)
+		exists, err := env.TenantProvider.GetTenant(c, tenantId)
 		if err != nil {
 			return err
 		}
-		if !exists {
+		if exists == nil {
 			log.Info("invalid tenant received: %s", tenantId)
 			return c.BadRequest("INVALID_TENANT")
 		}
