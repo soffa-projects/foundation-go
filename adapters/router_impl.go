@@ -82,35 +82,37 @@ func (r *routerImpl) Init(env f.ApplicationEnv) {
 			if strings.HasPrefix(strings.ToLower(authz), "bearer ") {
 				authToken = authz[len("bearer "):]
 			}
-			if env.TokenProvider != nil {
-				token, err := env.TokenProvider.Verify(authToken)
-				if err == nil {
-					sub, _ := token.Subject()
-					aud, _ := token.Audience()
-					var permission string
-					var role string
-					var email string
-					var tenantId string
-					_ = token.Get("permission", &permission)
-					_ = token.Get("email", &email)
-					_ = token.Get("role", &role)
-					_ = token.Get("tenantId", &tenantId)
-					//c.Set("authToken", authToken)
-					auth := &f.Authentication{
-						UserId:     sub,
-						Audience:   aud,
-						Permission: permission,
-						Email:      email,
-						Role:       role,
-						TenantId:   tenantId,
-					}
-					c.Set(_authKey, auth)
-					if tenantId != "" {
-						c.Set(_tenantIdKey, tenantId)
+			if authToken != "" {
+				if env.TokenProvider != nil {
+					token, err := env.TokenProvider.Verify(authToken)
+					if err == nil {
+						sub, _ := token.Subject()
+						aud, _ := token.Audience()
+						var permission string
+						var role string
+						var email string
+						var tenantId string
+						_ = token.Get("permission", &permission)
+						_ = token.Get("email", &email)
+						_ = token.Get("role", &role)
+						_ = token.Get("tenantId", &tenantId)
+						//c.Set("authToken", authToken)
+						auth := &f.Authentication{
+							UserId:     sub,
+							Audience:   aud,
+							Permission: permission,
+							Email:      email,
+							Role:       role,
+							TenantId:   tenantId,
+						}
+						c.Set(_authKey, auth)
+						if tenantId != "" {
+							c.Set(_tenantIdKey, tenantId)
+						}
 					}
 				}
+				c.Set(_authTokenKey, authToken)
 			}
-			c.Set(_authTokenKey, authToken)
 			return next(c)
 		}
 	})
@@ -345,8 +347,11 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 		}
 
 		var result any
+		tenantId := rc.TenantId()
 
-		log.Info("active tenant is: %s", rc.TenantId())
+		if tenantId != "" {
+			log.Info("active tenant is: %s", tenantId)
+		}
 
 		if env.DS != nil {
 			if rc.Get(_connectionKey) != nil {
@@ -355,12 +360,16 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 				cnx = env.DS.Connection("default")
 			}
 
-			tx, err := cnx.Tx(rc)
-			if err != nil {
-				return formatResponse(c, err)
-			}
+			if cnx != nil {
+				tx, err := cnx.Tx(rc)
+				if err != nil {
+					return formatResponse(c, err)
+				}
 
-			result = handler.Handle(rc.WithValue(f.TenantCnx{}, tx).WithValue(f.DefaultCnx{}, env.DS.Connection("default")))
+				result = handler.Handle(rc.WithValue(f.TenantCnx{}, tx).WithValue(f.DefaultCnx{}, env.DS.Connection("default")))
+			} else {
+				result = handler.Handle(rc)
+			}
 
 		} else {
 			result = handler.Handle(rc)

@@ -118,6 +118,9 @@ func (p *defaultJwtProvider) Create(cfg f.CreateJwtConfig) (string, error) {
 }
 
 func (p *defaultJwtProvider) Verify(token string) (jwt.Token, error) {
+	if token == "" {
+		return nil, nil
+	}
 	var tok jwt.Token
 	var err error
 	if p.pubkey != nil {
