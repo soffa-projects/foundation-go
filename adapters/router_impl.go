@@ -26,7 +26,8 @@ const _authKey = "auth"
 const _authTokenKey = "authToken"
 const _tenantIdKey = "tenantId"
 const _envKey = "env"
-const _connectionKey = "connection"
+
+//const _connectionKey = "connection"
 
 func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e := echo.New()
@@ -362,19 +363,18 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 		}
 
 		if env.DS != nil {
-			if rc.Get(_connectionKey) != nil {
-				cnx = rc.Get(_connectionKey).(f.Connection)
-			} else {
-				cnx = env.DS.Connection("default")
-			}
 
+			cnx := env.DS.DefaultConnection()
+			if tenantId != "" {
+				cnx = env.DS.Connection(tenantId)
+			}
 			if cnx != nil {
 				tx, err := cnx.Tx(rc)
 				if err != nil {
 					return formatResponse(c, err)
 				}
 
-				result = handler.Handle(rc.WithValue(f.TenantCnx{}, tx).WithValue(f.DefaultCnx{}, env.DS.Connection("default")))
+				result = handler.Handle(rc.WithValue(f.TenantCnx{}, tx).WithValue(f.DefaultCnx{}, env.DS.DefaultConnection()))
 			} else {
 				result = handler.Handle(rc)
 			}
@@ -499,13 +499,7 @@ func (c *ctxImpl) Bind(input any) {
 }
 
 func (c *ctxImpl) SetTenant(tenantId string) {
-	c.internal.Set(_tenantIdKey, tenantId)
-	cnx := c.env.DS.Connection(tenantId)
-	if cnx != nil {
-		c.internal.Set(_connectionKey, cnx)
-	} else {
-		panic(fmt.Sprintf("tenant connexion %s not found", tenantId))
-	}
+	c.Set(_tenantIdKey, tenantId)
 }
 
 func (c *ctxImpl) WithValue(key, value any) f.Context {

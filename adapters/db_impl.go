@@ -53,6 +53,9 @@ func (t connectionImpl) Tx(ctx context.Context) (f.Connection, error) {
 		ReadOnly:  false,
 		Isolation: sql.LevelDefault,
 	})
+	if t.schema != "" {
+		t.SetSchema(t.schema)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %v", err)
 	}
@@ -140,6 +143,12 @@ func (t *connectionImpl) configure(migrationsFS []fs.FS, prefix string) error {
 		}
 	}
 
+	if t.schema != "" {
+		err := t.SetSchema(t.schema)
+		if err != nil {
+			return err
+		}
+	}
 	t.initialized = true
 	return nil
 }
@@ -202,6 +211,15 @@ func (t connectionImpl) Insert(ctx context.Context, entity f.Entity) error {
 func (t connectionImpl) InsertBatch(ctx context.Context, entities f.Entity) error {
 	_, err := t.db.NewInsert().Model(entities).Exec(ctx)
 	return err
+}
+
+func (t connectionImpl) SetSchema(schema string) error {
+	if t.dialect == "postgres" {
+		if _, err := t.db.(*bun.DB).Exec(fmt.Sprintf("SET search_path TO %s", bun.Ident(schema))); err != nil {
+			return fmt.Errorf("failed to set search path %s: %v", schema, err)
+		}
+	}
+	return nil
 }
 
 func (t connectionImpl) Update(ctx context.Context, entity f.Entity, columns ...string) error {

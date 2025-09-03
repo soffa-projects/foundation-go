@@ -12,6 +12,7 @@ type DefaultCnx struct{}
 type Connection interface {
 	DatabaseUrl() string
 	//
+	SetSchema(schema string) error
 	Tx(ctx context.Context) (Connection, error)
 	Commit() error
 	Rollback() error
