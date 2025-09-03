@@ -15,6 +15,7 @@ type Tenant struct {
 	ID          string `json:"id"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
+	AltID       string `json:"alt_id"`
 	DatabaseUrl string `json:"database_url"`
 }
 

@@ -195,7 +195,7 @@ func (c *ctxImpl) RealIP() string {
 }
 
 func (c *ctxImpl) Host() string {
-	return c.internal.Request().Host
+	return strings.ToLower(c.internal.Request().Host)
 }
 
 func (c *ctxImpl) UserAgent() string {
@@ -462,6 +462,10 @@ func mapError(c echo.Context, status int, kind string, error any) error {
 
 func (c *ctxImpl) Param(value string) string {
 	return c.internal.Param(value)
+}
+
+func (c *ctxImpl) QueryParam(value string) string {
+	return c.internal.QueryParam(value)
 }
 func (c *ctxImpl) FormFile(field string) (io.ReadCloser, error) {
 	file, err := c.internal.FormFile(field)

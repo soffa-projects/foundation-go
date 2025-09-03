@@ -24,7 +24,13 @@ func TenantMiddleware(c Context) error {
 		tenantId = c.Param("tenant")
 	}
 	if tenantId == "" {
+		tenantId = c.QueryParam("tid")
+	}
+	if tenantId == "" {
 		tenantId = c.Header("X-TenantId")
+	}
+	if tenantId == "" {
+		tenantId = c.Host()
 	}
 	if tenantId != "" {
 		if env.TenantProvider == nil {

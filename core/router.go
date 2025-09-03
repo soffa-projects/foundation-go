@@ -63,6 +63,7 @@ type Context interface {
 	FormFile(key string) (io.ReadCloser, error)
 	ShouldBind(input any) error
 	Param(value string) string
+	QueryParam(value string) string
 	Header(value string) string
 	Set(key string, value any)
 	Get(key string) any

@@ -26,11 +26,12 @@ type HttpRes struct {
 }
 
 type HttpReq struct {
-	Body    any
-	Headers map[string]string
-	Files   map[string]string
-	Bearer  string
-	Result  any
+	Body     any
+	Headers  map[string]string
+	Files    map[string]string
+	Bearer   string
+	TenantId string
+	Result   any
 }
 
 type ApiDef struct {
@@ -86,6 +87,7 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 	q := c.client.R()
 	var result map[string]any
 	bearerAuth := ""
+	tenantId := ""
 	for _, opt := range opts {
 		if opt.Body != nil {
 			q = q.SetBody(opt.Body)
@@ -106,12 +108,18 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 		if opt.Files != nil {
 			q = q.SetFiles(opt.Files)
 		}
+		if opt.TenantId != "" {
+			tenantId = opt.TenantId
+		}
 	}
 	if bearerAuth == "" && c.bearer != "" {
 		bearerAuth = c.bearer
 	}
 	if bearerAuth != "" {
 		q = q.SetHeader("Authorization", fmt.Sprintf("Bearer %s", bearerAuth))
+	}
+	if tenantId != "" {
+		q = q.SetHeader("X-TenantId", tenantId)
 	}
 	resp, err := q.Execute(method, path)
 	return HttpRes{
