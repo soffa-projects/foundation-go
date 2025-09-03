@@ -62,7 +62,7 @@ func (p *RedisPubSubProvider) Init() error {
 	return nil
 }
 
-func (p *RedisPubSubProvider) Publish(ctx context.Context, topic string, message any) error {
+func (p *RedisPubSubProvider) Publish(ctx context.Context, topic string, message string) error {
 	err := p.client.Publish(ctx, topic, message).Err()
 	if err != nil {
 		log.Error("[redis]failed to publish message: %v", err)
@@ -72,7 +72,7 @@ func (p *RedisPubSubProvider) Publish(ctx context.Context, topic string, message
 	return nil
 }
 
-func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message any)) {
+func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message string)) {
 	go func() {
 		sub := p.client.Subscribe(ctx, topic)
 		defer sub.Close()
@@ -105,14 +105,14 @@ type FakePubSubProvider struct {
 	f.PubSubProvider
 	sent        map[string]int
 	received    map[string]int
-	subscribers map[string][]func(message any)
+	subscribers map[string][]func(message string)
 }
 
 func NewFakePubSubProvider() f.PubSubProvider {
 	return &FakePubSubProvider{
 		sent:        make(map[string]int),
 		received:    make(map[string]int),
-		subscribers: make(map[string][]func(message any)),
+		subscribers: make(map[string][]func(message string)),
 	}
 }
 
@@ -124,7 +124,7 @@ func (p *FakePubSubProvider) Init() error {
 	return nil
 }
 
-func (p *FakePubSubProvider) Publish(ctx context.Context, topic string, message any) error {
+func (p *FakePubSubProvider) Publish(ctx context.Context, topic string, message string) error {
 	p.sent[topic]++
 	handlers := p.subscribers[topic]
 	for _, handler := range handlers {
@@ -134,7 +134,7 @@ func (p *FakePubSubProvider) Publish(ctx context.Context, topic string, message 
 	return nil
 }
 
-func (p *FakePubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message any)) {
+func (p *FakePubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message string)) {
 	p.subscribers[topic] = append(p.subscribers[topic], handler)
 }
 
