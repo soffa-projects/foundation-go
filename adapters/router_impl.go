@@ -50,11 +50,10 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
-	//e.Use(session.MiddlewareWithConfig(session.Config{}))
-	/*if cfg.SessionSecret != "" {
+	if cfg.SessionSecret != "" {
 		e.Logger.Info("session secret found, enabling session middleware")
 		e.Use(session.Middleware(sessions.NewCookieStore([]byte(cfg.SessionSecret))))
-	}*/
+	}
 
 	if cfg != nil && cfg.AllowOrigins != nil {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -194,6 +193,10 @@ func (c *ctxImpl) Auth() *f.Authentication {
 
 func (c *ctxImpl) RealIP() string {
 	return c.internal.RealIP()
+}
+
+func (c *ctxImpl) Host() string {
+	return c.internal.Request().Host
 }
 
 func (c *ctxImpl) UserAgent() string {

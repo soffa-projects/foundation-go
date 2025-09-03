@@ -55,6 +55,7 @@ type Context interface {
 	RealIP() string
 	UserAgent() string
 	TenantId() string
+	Host() string
 	SetTenant(tenantId string)
 	//WithConnection(conn Connection) Context
 
