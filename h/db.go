@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/uptrace/bun/driver/pgdriver"
+	"github.com/uptrace/bun/driver/sqliteshim"
 )
 
 func ValidateDatabaseUrl(databaseUrl string) (bool, error) {
 	var (
 		sqldb *sql.DB
+		err   error
 	)
 	schema := ""
 
@@ -30,11 +32,17 @@ func ValidateDatabaseUrl(databaseUrl string) (bool, error) {
 
 		sqldb = sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(databaseUrl)))
 
+	} else if strings.HasPrefix(databaseUrl, "sqlite://") {
+		sqliteDSN := strings.Replace(databaseUrl, "sqlite://", "", 1)
+		sqldb, err = sql.Open(sqliteshim.ShimName, sqliteDSN)
+		if err != nil {
+			return false, fmt.Errorf("failed to open SQLite database: %v", err)
+		}
 	} else {
 		return false, fmt.Errorf("invalid database url: %s", databaseUrl)
 	}
 
-	err := sqldb.Ping()
+	err = sqldb.Ping()
 
 	return err == nil, err
 }
