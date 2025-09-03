@@ -62,25 +62,25 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 		}
 		ds.tenants[_defaultTenantId] = cnx
 	}
-	if err := ds.init(); err != nil {
+	ctx := context.Background()
+	if err := ds.init(ctx); err != nil {
 		log.Fatal("failed to initialize data source: %v", err)
 	}
 	log.Info("multi tenant data source initialized with %d tenants", len(ds.tenants))
 	f.OnEvent(context.Background(), "tenant_created", func(data map[string]any) error {
-		return ds.init()
+		return ds.init(ctx)
 	})
 	return nil
 }
 
-func (ds *MultiTenantDataSource) init() error {
+func (ds *MultiTenantDataSource) init(ctx context.Context) error {
 	if ds.tenantProvider == nil {
 		return fmt.Errorf("tenant provider is not set")
 	}
-	tenantList, err := ds.tenantProvider.GetTenantList(context.Background())
+	tenantList, err := ds.tenantProvider.Load(ctx)
 	if err != nil {
 		return err
 	}
-
 	for _, tenant := range tenantList {
 		tenantId := tenant.ID
 		tenantSlug := tenant.Slug
@@ -114,7 +114,7 @@ func (ds *MultiTenantDataSource) Connection(id string) f.Connection {
 		return cnx
 	}
 	log.Debug("tenant connexion %s not found, initializing...", id)
-	if err := ds.init(); err != nil {
+	if err := ds.init(context.Background()); err != nil {
 		panic(fmt.Sprintf("tenant connexion %s not found", id))
 	}
 	if cnx, ok := ds.tenants[id]; ok {

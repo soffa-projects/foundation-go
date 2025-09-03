@@ -82,8 +82,8 @@ func NewFileTenantProvider(cfg h.Url) f.TenantProvider {
 	}
 }
 
-func (tp *FileTenantProvider) Default() f.Tenant {
-	return f.Tenant{}
+func (tp *FileTenantProvider) Load(ctx context.Context) ([]f.Tenant, error) {
+	return tp.GetTenantList(ctx)
 }
 
 func (tp *FileTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, error) {
@@ -114,14 +114,20 @@ type HttpTenantProvider struct {
 }
 
 func NewHttpTenantProvider(cfg h.Url) f.TenantProvider {
-	return HttpTenantProvider{
+	p := HttpTenantProvider{
 		bearer: cfg.User,
 		target: cfg.Url,
 		client: resty.New(),
 	}
+	if _, err := p.Load(context.Background()); err != nil {
+		log.Error("failed to load tenants: %v", err)
+	}
+	return p
 }
 
-func (tp HttpTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, error) {
+func (tp HttpTenantProvider) Load(ctx context.Context) ([]f.Tenant, error) {
+	defaultCache := h.DefaultCache()
+
 	var tenants f.TenantList
 	_, err := tp.client.R().
 		SetResult(&tenants).
@@ -131,7 +137,17 @@ func (tp HttpTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, err
 	if err != nil {
 		return nil, err
 	}
+	defaultCache.Set("tenants", tenants.Tenants)
+	log.Info("[http-tenant] %d tenants loaded", len(tenants.Tenants))
 	return tenants.Tenants, nil
+}
+
+func (tp HttpTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, error) {
+	defaultCache := h.DefaultCache()
+	if val, ok := defaultCache.Get("tenants"); ok {
+		return val.([]f.Tenant), nil
+	}
+	return tp.Load(ctx)
 }
 
 func (tp HttpTenantProvider) GetTenant(ctx context.Context, id string) (*f.Tenant, error) {

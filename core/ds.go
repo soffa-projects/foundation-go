@@ -23,6 +23,7 @@ type TenantList struct {
 }
 
 type TenantProvider interface {
+	Load(ctx context.Context) ([]Tenant, error)
 	GetTenantList(ctx context.Context) ([]Tenant, error)
 	GetTenant(ctx context.Context, id string) (*Tenant, error)
 }
