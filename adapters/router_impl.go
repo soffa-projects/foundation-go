@@ -26,6 +26,7 @@ const _authKey = "auth"
 const _authTokenKey = "authToken"
 const _tenantIdKey = "tenantId"
 const _envKey = "env"
+const _csrfSecretKey = "csrfSecret"
 
 //const _connectionKey = "connection"
 
@@ -51,10 +52,22 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
+	var csrfSecret string
+
 	if cfg.SessionSecret != "" {
 		e.Logger.Info("session secret found, enabling session middleware")
 		e.Use(session.Middleware(sessions.NewCookieStore([]byte(cfg.SessionSecret))))
+		csrfSecret = cfg.SessionSecret
+	} else {
+		csrfSecret = h.RandomString(32)
 	}
+
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set(_csrfSecretKey, csrfSecret)
+			return next(c)
+		}
+	})
 
 	if cfg != nil && cfg.AllowOrigins != nil {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -201,6 +214,17 @@ func (c *ctxImpl) Host() string {
 
 func (c *ctxImpl) UserAgent() string {
 	return c.internal.Request().UserAgent()
+}
+
+func (c *ctxImpl) NewCsrfToken(duration time.Duration) (string, error) {
+	secret := c.internal.Get(_csrfSecretKey).(string)
+	return h.NewCsrf(secret, duration)
+}
+
+// ValidateCSRFToken checks if a CSRF token is valid and not expired.
+func (c *ctxImpl) ValidateCsrfToken(token string) error {
+	secret := c.internal.Get(_csrfSecretKey).(string)
+	return h.VerifyCsrf(secret, token)
 }
 
 type routerImpl struct {

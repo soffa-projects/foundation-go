@@ -32,6 +32,7 @@ type HttpReq struct {
 	Bearer   string
 	TenantId string
 	Result   any
+	Host     string
 }
 
 type ApiDef struct {
@@ -110,6 +111,10 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 		}
 		if opt.TenantId != "" {
 			tenantId = opt.TenantId
+		}
+		if opt.Host != "" {
+			q = q.SetHeader("Host", opt.Host)
+			q = q.SetHeader("X-Forwarded-Host", opt.Host)
 		}
 	}
 	if bearerAuth == "" && c.bearer != "" {

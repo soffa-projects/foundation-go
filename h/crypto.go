@@ -1,10 +1,14 @@
 package h
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,4 +100,67 @@ func NewJwt(cfg JwtConfig) (string, error) {
 	}
 
 	return string(signed), nil
+}
+
+func NewCsrf(secret string, duration time.Duration) (string, error) {
+	// random 32 bytes
+	random := make([]byte, 32)
+	if _, err := rand.Read(random); err != nil {
+		return "", err
+	}
+	payload := base64.RawURLEncoding.EncodeToString(random)
+
+	// add expiry (unix timestamp as string)
+	exp := time.Now().Add(duration).Unix()
+	expStr := strconv.FormatInt(exp, 10)
+	payloadWithExp := payload + ":" + base64.RawURLEncoding.EncodeToString([]byte(expStr))
+
+	// sign with HMAC-SHA256
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(payloadWithExp))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	// final token: payload:exp.signature
+	return payloadWithExp + "." + signature, nil
+}
+
+func VerifyCsrf(secret string, token string) error {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return errors.New("invalid token format")
+	}
+
+	payloadWithExp := parts[0]
+	signature := parts[1]
+
+	// verify signature
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(payloadWithExp))
+	expectedSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+
+	if !hmac.Equal([]byte(signature), []byte(expectedSig)) {
+		return errors.New("invalid CSRF token signature")
+	}
+
+	// split payload:exp
+	payloadParts := strings.Split(payloadWithExp, ":")
+	if len(payloadParts) != 2 {
+		return errors.New("invalid token payload")
+	}
+
+	expBytes, err := base64.RawURLEncoding.DecodeString(payloadParts[1])
+	if err != nil {
+		return errors.New("invalid expiry encoding")
+	}
+
+	exp, err := strconv.ParseInt(string(expBytes), 10, 64)
+	if err != nil {
+		return errors.New("invalid expiry value")
+	}
+
+	if time.Now().Unix() > exp {
+		return errors.New("CSRF token expired")
+	}
+
+	return nil
 }

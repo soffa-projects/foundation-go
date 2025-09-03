@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/a-h/templ"
 )
@@ -79,6 +80,9 @@ type Context interface {
 	File(data []byte, contentType string, filename string) HttpResponse
 	Created(output any) HttpResponse
 	NoContent() HttpResponse
+
+	NewCsrfToken(duration time.Duration) (string, error)
+	ValidateCsrfToken(token string) error
 }
 
 type Middleware = func(Context) error
