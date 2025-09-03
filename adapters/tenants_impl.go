@@ -139,6 +139,11 @@ func (tp HttpTenantProvider) Load(ctx context.Context) ([]f.Tenant, error) {
 	}
 	defaultCache.Set("tenants", tenants.Tenants)
 	log.Info("[http-tenant] %d tenants loaded", len(tenants.Tenants))
+	for _, tenant := range tenants.Tenants {
+		tp.tenants[tenant.ID] = tenant
+		tp.tenants[tenant.Slug] = tenant
+		log.Info("[http-tenant] tenant registed %s/%s", tenant.ID, tenant.Slug)
+	}
 	return tenants.Tenants, nil
 }
 
