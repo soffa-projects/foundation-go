@@ -16,7 +16,7 @@ func NewPubSubProvider(provider string) f.PubSubProvider {
 	}
 	switch res.Scheme {
 	case "redis":
-		return NewRedisPubSubProvider(res.Url)
+		return NewRedisPubSubProvider(res)
 	case "fake", "faker", "dummy":
 		return NewFakePubSubProvider()
 	default:
@@ -34,9 +34,16 @@ type RedisPubSubProvider struct {
 	client *redis.Client
 }
 
-func NewRedisPubSubProvider(url string) f.PubSubProvider {
+func NewRedisPubSubProvider(cfg h.Url) f.PubSubProvider {
+	db := 0
+	if cfg.HasQueryParam("db") {
+		db = int(cfg.Query("db").(int64))
+	}
 	client := redis.NewClient(&redis.Options{
-		Addr: url,
+		Addr:     cfg.Host,
+		Username: cfg.User,
+		Password: cfg.Password,
+		DB:       db,
 	})
 	return &RedisPubSubProvider{
 		client: client,
