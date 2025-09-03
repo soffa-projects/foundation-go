@@ -85,6 +85,7 @@ type Middleware = func(Context) error
 type Route struct {
 	Transactional bool
 	Roles         []string
+	Permissions   []string
 	Pre           []Middleware
 	Handle        func(Context) any
 	Authenticated bool
@@ -92,12 +93,11 @@ type Route struct {
 type HandlerInit = func(ApplicationEnv) Route
 
 type Authentication struct {
-	UserId     string
-	Audience   []string
-	Role       string
-	Permission string
-	Email      string
-	TenantId   string
+	UserId      string
+	Audience    []string
+	Permissions []string
+	Email       string
+	TenantId    string
 }
 
 type RedirectResponse struct {

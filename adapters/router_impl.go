@@ -87,22 +87,21 @@ func (r *routerImpl) Init(env f.ApplicationEnv) {
 					if err == nil {
 						sub, _ := token.Subject()
 						aud, _ := token.Audience()
-						var permission string
-						var role string
+						roles := ""
 						var email string
 						var tenantId string
-						_ = token.Get("permission", &permission)
+
+						permissions := h.GetClaimValues(token, "permissions", "permission", "grant", "grants", "roles", "role")
 						_ = token.Get("email", &email)
-						_ = token.Get("role", &role)
+						_ = token.Get("roles", &roles)
 						_ = token.Get("tenantId", &tenantId)
 						//c.Set("authToken", authToken)
 						auth := &f.Authentication{
-							UserId:     sub,
-							Audience:   aud,
-							Permission: permission,
-							Email:      email,
-							Role:       role,
-							TenantId:   tenantId,
+							UserId:      sub,
+							Audience:    aud,
+							Permissions: permissions,
+							Email:       email,
+							TenantId:    tenantId,
 						}
 						c.Set(_authKey, auth)
 						if tenantId != "" {
@@ -347,6 +346,12 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 
 		if handler.Authenticated && rc.Auth() == nil {
 			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized"})
+		}
+
+		if handler.Permissions != nil {
+			if !h.ContainsAnyString(handler.Permissions, rc.Auth().Permissions) {
+				return formatResponse(c, f.HttpResponse{Code: http.StatusForbidden, Data: "forbidden"})
+			}
 		}
 
 		var result any
