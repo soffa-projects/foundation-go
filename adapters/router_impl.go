@@ -556,12 +556,17 @@ func (c *ctxImpl) TenantId() string {
 }
 
 func (c *ctxImpl) ShouldBind(input any) error {
-	if err := c.internal.Bind(input); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err)
-	}
-
 	binder := &echo.DefaultBinder{}
 	if err := binder.BindHeaders(c.internal, input); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	if err := binder.BindQueryParams(c.internal, input); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	if err := binder.BindPathParams(c.internal, input); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
+	if err := binder.BindBody(c.internal, input); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 	validate := validator.New()
