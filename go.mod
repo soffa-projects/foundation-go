@@ -9,6 +9,7 @@ require (
 	github.com/getsentry/sentry-go v0.35.1
 	github.com/getsentry/sentry-go/echo v0.35.1
 	github.com/go-faker/faker/v4 v4.6.1
+	github.com/go-playground/assert/v2 v2.2.0
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-resty/resty/v2 v2.16.5
