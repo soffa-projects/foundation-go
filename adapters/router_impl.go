@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+	sentryecho "github.com/getsentry/sentry-go/echo"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	echoSwagger "github.com/swaggo/echo-swagger"
@@ -75,6 +77,17 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 			AllowHeaders: []string{"*"},
 			AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		}))
+	}
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         cfg.SentryDSN,
+			Environment: cfg.Env,
+		}); err != nil {
+			log.Fatal("Sentry initialization failed: %v\n", err)
+		}
+
+		e.Use(sentryecho.New(sentryecho.Options{}))
+		log.Info("[echo] sentry middle initialized successfully")
 	}
 
 	return &routerImpl{

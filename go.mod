@@ -6,6 +6,8 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/a-h/templ v0.3.943
 	github.com/dgraph-io/ristretto/v2 v2.3.0
+	github.com/getsentry/sentry-go v0.35.1
+	github.com/getsentry/sentry-go/echo v0.35.1
 	github.com/go-faker/faker/v4 v4.6.1
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/go-redis/redis/v8 v8.11.5

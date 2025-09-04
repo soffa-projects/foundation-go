@@ -16,6 +16,8 @@ type RouterConfig struct {
 	AssetsFS      fs.FS
 	FaviconFS     fs.FS
 	SessionSecret string
+	SentryDSN     string
+	Env           string
 }
 
 type Methods struct {
