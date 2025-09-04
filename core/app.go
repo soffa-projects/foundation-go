@@ -27,6 +27,7 @@ type ApplicationEnv struct {
 	PubSubProvider PubSubProvider
 	SecretProvider SecretsProvider
 	config         map[string]string
+	ErrorReporter  ErrorReporter
 }
 
 func Init(env ApplicationEnv, router Router, features []Feature) App {
