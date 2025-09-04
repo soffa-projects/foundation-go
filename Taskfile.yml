@@ -11,3 +11,6 @@ tasks:
     cmds:
       - go get -u ./...
       - go mod tidy
+  test:
+    cmds:
+      - GO_ENV=test go test -v ./..

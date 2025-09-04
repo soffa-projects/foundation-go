@@ -29,6 +29,7 @@ type HttpReq struct {
 	Body     any
 	Headers  map[string]string
 	Files    map[string]string
+	Form     map[string]string
 	Bearer   string
 	TenantId string
 	Result   any
@@ -95,6 +96,9 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 		}
 		if opt.Bearer != "" {
 			bearerAuth = opt.Bearer
+		}
+		if opt.Form != nil {
+			q = q.SetFormData(opt.Form)
 		}
 		if opt.Result != nil {
 			q = q.SetResult(opt.Result)
