@@ -97,3 +97,13 @@ func StripOriginFromUrl(input string) (string, error) {
 	}
 	return out, nil
 }
+
+func EscapeUrl(input string) string {
+	u, err := url.Parse(input)
+	if err != nil {
+		return input
+	}
+	u.RawQuery = url.QueryEscape(u.RawQuery)
+	u.RawFragment = url.QueryEscape(u.RawFragment)
+	return u.String()
+}
