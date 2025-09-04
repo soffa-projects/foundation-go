@@ -14,4 +14,11 @@ func TestEscapeUrl(t *testing.T) {
 	// double escape should not change the output
 	output2 := EscapeUrl(expected)
 	assert.Equal(t, output2, expected)
+
+	// unescape should not change the output
+	output3 := UnescapeUrl(expected)
+	assert.Equal(t, output3, uri)
+	// double unescape should not change the output
+	output4 := UnescapeUrl(output3)
+	assert.Equal(t, output4, uri)
 }

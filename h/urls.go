@@ -104,3 +104,11 @@ func EscapeUrl(input string) string {
 	}
 	return url.QueryEscape(input)
 }
+
+func UnescapeUrl(input string) string {
+	out, err := url.QueryUnescape(input)
+	if err != nil {
+		return input
+	}
+	return out
+}
