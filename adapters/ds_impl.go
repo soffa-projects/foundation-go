@@ -66,7 +66,6 @@ func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature
 	if err := ds.init(ctx); err != nil {
 		log.Fatal("failed to initialize data source: %v", err)
 	}
-	log.Info("multi tenant data source initialized with %d tenants", len(ds.tenants))
 	f.OnEvent(context.Background(), "tenant_created", func(data map[string]any) error {
 		return ds.init(ctx)
 	})
@@ -102,6 +101,9 @@ func (ds *MultiTenantDataSource) init(ctx context.Context) error {
 			ds.tenants[tenantSlug] = cnx
 		}
 	}
+
+	log.Info("multi tenant data source initialized with %d tenants", len(tenantList))
+
 	return nil
 }
 

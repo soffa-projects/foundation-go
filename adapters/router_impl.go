@@ -35,14 +35,15 @@ const _csrfSecretKey = "csrfSecret"
 func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e := echo.New()
 	e.Use(prettylogger.Logger)
-	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+	e.Use(middleware.Recover())
+	/*e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
 		LogLevel: 2,
 		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
 			tracerr.PrintSourceColor(tracerr.Wrap(err))
 			return formatResponse(c, f.HttpResponse{
 				Code: http.StatusInternalServerError, Data: err.Error()})
 		},
-	}))
+	}))*/
 	e.Use(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
 

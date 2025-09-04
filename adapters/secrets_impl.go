@@ -77,6 +77,8 @@ func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
 	}
 	if err != nil {
 		log.Fatal("[vault] failed to create client: %v", err)
+	} else {
+		log.Info("[vault] secret provider installed")
 	}
 	return VaultSecretProvider{
 		mount:  mount.(string),
@@ -103,10 +105,7 @@ func (v VaultSecretProvider) Get(ctx context.Context, tenantId string, key strin
 	secretPath := strings.ReplaceAll(v.path, "__tenant__", tenantId)
 	s, err := v.client.Secrets.KvV2Read(ctx, secretPath, vault.WithMountPath(v.mount))
 	if err != nil {
-		log.Fatal("[vault] failed to retrieve secret: %v", err)
-	}
-	if err != nil {
-		return "", err
+		return "", fmt.Errorf("[vault] failed to retrieve secret: %s, %v", secretPath, err)
 	}
 	if value, ok := s.Data.Data[key]; ok {
 		v.cache.SetWithTTL(key, value.(string), 1, 1*time.Hour)

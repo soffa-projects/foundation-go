@@ -16,6 +16,7 @@ type Connection interface {
 	Tx(ctx context.Context) (Connection, error)
 	Commit() error
 	Rollback() error
+	Ping() error
 	//
 	FindBy(ctx context.Context, model Entity, where string, args ...any) (bool, error)
 	ExistsBy(ctx context.Context, model Entity, where string, args ...any) (bool, error)

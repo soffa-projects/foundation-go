@@ -56,3 +56,8 @@ func TenantMiddleware(c Context) error {
 	}
 	return nil
 }
+
+func OptionalTenantMiddleware(c Context) error {
+	_ = TenantMiddleware(c)
+	return nil
+}

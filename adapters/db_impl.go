@@ -45,6 +45,11 @@ func NewConnection(databaseUrl string) (f.Connection, error) {
 	return cnx, nil
 }
 
+func (t connectionImpl) Ping() error {
+	_, err := t.db.NewRaw("SELECT 1").Exec(context.Background())
+	return err
+}
+
 func (t connectionImpl) Tx(ctx context.Context) (f.Connection, error) {
 	if t.db == nil {
 		return nil, errors.New("database not initialized")

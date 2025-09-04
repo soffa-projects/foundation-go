@@ -14,9 +14,9 @@ type DataSource interface {
 type Tenant struct {
 	ID          string `json:"id"`
 	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	AltID       string `json:"alt_id"`
-	DatabaseUrl string `json:"database_url"`
+	Name        string `json:"name,omitempty"`
+	AltID       string `json:"alt_id,omitempty"`
+	DatabaseUrl string `json:"database_url,omitempty"`
 }
 
 type TenantList struct {
