@@ -25,6 +25,7 @@ type ApplicationEnv struct {
 	TokenProvider  TokenProvider
 	EmailSender    EmailSender
 	PubSubProvider PubSubProvider
+	CacheProvider  CacheProvider
 	SecretProvider SecretsProvider
 	config         map[string]string
 	ErrorReporter  ErrorReporter

@@ -21,6 +21,7 @@ func DefaultCache() Cache {
 type Cache interface {
 	Get(key string) (any, bool)
 	Set(key string, value any)
+	GetOrSet(key string, function func() (any, error)) any
 }
 
 type cacheImpl struct {
@@ -44,6 +45,19 @@ func NewCache() Cache {
 
 func (c *cacheImpl) Get(key string) (any, bool) {
 	return c.internal.Get(key)
+}
+
+func (c *cacheImpl) GetOrSet(key string, function func() (any, error)) any {
+	if val, ok := c.internal.Get(key); ok {
+		return val
+	}
+	value, err := function()
+	if err != nil {
+		log.Error("failed to get or set cache: %v", err)
+		return nil
+	}
+	c.internal.SetWithTTL(key, value, 1, 1*time.Hour)
+	return value
 }
 
 func (c *cacheImpl) Set(key string, value any) {

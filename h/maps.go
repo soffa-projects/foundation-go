@@ -1,6 +1,10 @@
 package h
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/soffa-projects/foundation-go/log"
+)
 
 func NonEmptyValuesMaps(input map[string]any) map[string]any {
 	values := map[string]any{}
@@ -16,10 +20,14 @@ type Map struct {
 	values map[string]any
 }
 
+func NewMapWithValues(values map[string]any) Map {
+	return Map{values: values}
+}
+
 func NewMap(input string) Map {
-	values := map[string]any{}
+	var values map[string]any
 	if err := json.Unmarshal([]byte(input), &values); err != nil {
-		return Map{values: values}
+		log.Error("failed to unmarshal map: %s", err)
 	}
 	return Map{values: values}
 }

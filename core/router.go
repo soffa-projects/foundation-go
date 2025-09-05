@@ -60,7 +60,12 @@ type Context interface {
 	TenantId() string
 	Host() string
 	SetTenant(tenantId string)
+	Request() *http.Request
+	Response() http.ResponseWriter
 	//WithConnection(conn Connection) Context
+
+	SetCookie(name string, value string, duration time.Duration)
+	GetCookie(name string) string
 
 	Bind(input any)
 	FormFile(key string) (io.ReadCloser, error)

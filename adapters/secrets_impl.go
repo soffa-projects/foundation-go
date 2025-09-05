@@ -97,20 +97,26 @@ func (v VaultSecretProvider) Close() error {
 	return nil
 }
 
-func (v VaultSecretProvider) Get(ctx context.Context, tenantId string, key string) (string, error) {
-	if val, ok := v.cache.Get(key); ok {
-		return val, nil
-	}
+func (v VaultSecretProvider) Get(ctx context.Context, tenantId string, key string) (any, error) {
 
 	secretPath := strings.ReplaceAll(v.path, "__tenant__", tenantId)
-	s, err := v.client.Secrets.KvV2Read(ctx, secretPath, vault.WithMountPath(v.mount))
-	if err != nil {
-		return "", fmt.Errorf("[vault] failed to retrieve secret: %s, %v", secretPath, err)
+	val := h.DefaultCache().GetOrSet(fmt.Sprintf("vault:%s:%s", secretPath, key), func() (any, error) {
+		s, err := v.client.Secrets.KvV2Read(ctx, secretPath, vault.WithMountPath(v.mount))
+		if err != nil {
+			return nil, fmt.Errorf("[vault] failed to retrieve secret: %s, %v", secretPath, err)
+		}
+		return s.Data.Data[key], nil
+	})
+	if val == nil {
+		return nil, fmt.Errorf("[vault] failed to retrieve secret: %s", key)
 	}
-	if value, ok := s.Data.Data[key]; ok {
-		v.cache.SetWithTTL(key, value.(string), 1, 1*time.Hour)
-		return value.(string), nil
-	}
+	return val, nil
+}
 
-	return "", nil
+func (v VaultSecretProvider) GetObject(ctx context.Context, tenantId string, key string) (map[string]any, error) {
+	value, err := v.Get(ctx, tenantId, key)
+	if err != nil {
+		return nil, err
+	}
+	return value.(map[string]any), err
 }

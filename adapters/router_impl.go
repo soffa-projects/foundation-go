@@ -230,6 +230,31 @@ func (c *ctxImpl) UserAgent() string {
 	return c.internal.Request().UserAgent()
 }
 
+func (c *ctxImpl) Request() *http.Request {
+	return c.internal.Request()
+}
+
+func (c *ctxImpl) Response() http.ResponseWriter {
+	return c.internal.Response()
+}
+
+func (c *ctxImpl) SetCookie(name string, value string, duration time.Duration) {
+	cookie := new(http.Cookie)
+	cookie.Name = name
+	cookie.Value = value
+	cookie.Expires = time.Now().Add(duration)
+	c.internal.SetCookie(cookie)
+}
+
+func (c *ctxImpl) GetCookie(name string) string {
+	cookie, err := c.internal.Request().Cookie(name)
+	if err != nil {
+		log.Error("failed to get cookie: %v", err)
+		return ""
+	}
+	return cookie.Value
+}
+
 func (c *ctxImpl) NewCsrfToken(duration time.Duration) (string, error) {
 	secret := c.internal.Get(_csrfSecretKey).(string)
 	return h.NewCsrf(secret, duration)
@@ -254,6 +279,7 @@ type groupRouterImpl struct {
 
 func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGroup {
 	g := r.internal.Group(path)
+
 	if len(middlewares) > 0 {
 		for _, middleware := range middlewares {
 			g.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
