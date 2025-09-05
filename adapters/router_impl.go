@@ -368,9 +368,6 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusInternalServerError, err)
 		}
 		var cnx f.Connection
-		/*if rc.Auth() == nil && rc.AuthToken() == "" && !isPublic {
-			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
-		}*/
 
 		// Handle panics and transactions
 		defer func() {
@@ -408,12 +405,12 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 		}
 
 		if handler.Authenticated && rc.Auth() == nil {
-			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized"})
+			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth"})
 		}
 
 		if handler.Permissions != nil {
 			if !h.ContainsAnyString(handler.Permissions, rc.Auth().Permissions) {
-				return formatResponse(c, f.HttpResponse{Code: http.StatusForbidden, Data: "forbidden"})
+				return formatResponse(c, f.HttpResponse{Code: http.StatusForbidden, Data: "forbidden_grants"})
 			}
 		}
 
