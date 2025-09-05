@@ -404,12 +404,14 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 			}
 		}
 
-		if handler.Authenticated && rc.Auth() == nil {
+		auth := rc.Auth()
+
+		if handler.Authenticated && auth == nil {
 			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth"})
 		}
 
-		if handler.Permissions != nil {
-			if !h.ContainsAnyString(handler.Permissions, rc.Auth().Permissions) {
+		if handler.Permissions != nil && auth != nil {
+			if !h.ContainsAnyString(handler.Permissions, auth.Permissions) {
 				return formatResponse(c, f.HttpResponse{Code: http.StatusForbidden, Data: "forbidden_grants"})
 			}
 		}
