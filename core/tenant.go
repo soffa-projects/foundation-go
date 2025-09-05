@@ -21,21 +21,20 @@ func TenantMiddleware(c Context) error {
 	env := c.Env()
 	tenantId := c.TenantId()
 	if tenantId == "" {
-
 		tenantId = c.Param("tenant")
-		log.Info("detecting tenant from param: %s", tenantId)
+		// log.Info("detecting tenant from param: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.QueryParam("tid")
-		log.Info("detecting tenant from query param: %s", tenantId)
+		// log.Info("detecting tenant from query param: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.Header("X-TenantId")
-		log.Info("detecting tenant from header: %s", tenantId)
+		// log.Info("detecting tenant from header: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.Host()
-		log.Info("detecting tenant from host: %s", tenantId)
+		// log.Info("detecting tenant from host: %s", tenantId)
 	}
 	if tenantId != "" {
 		if env.TenantProvider == nil {

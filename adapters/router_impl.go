@@ -407,7 +407,11 @@ func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
 		auth := rc.Auth()
 
 		if handler.Authenticated && auth == nil {
-			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth"})
+			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth_01"})
+		}
+
+		if handler.Permissions != nil && auth == nil {
+			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth_02"})
 		}
 
 		if handler.Permissions != nil && auth != nil {
