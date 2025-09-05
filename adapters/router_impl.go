@@ -533,6 +533,9 @@ func (c *ctxImpl) FormFile(field string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+	if file == nil {
+		return nil, c.BadRequest("err_file_required")
+	}
 	src, err := file.Open()
 	if err != nil {
 		return nil, err
