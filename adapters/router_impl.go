@@ -115,13 +115,11 @@ func (r *routerImpl) Init(env f.ApplicationEnv) {
 					if err == nil {
 						sub, _ := token.Subject()
 						aud, _ := token.Audience()
-						roles := ""
 						var email string
 						var tenantId string
 
 						permissions := h.GetClaimValues(token, "permissions", "permission", "grant", "grants", "roles", "role")
 						_ = token.Get("email", &email)
-						_ = token.Get("roles", &roles)
 						_ = token.Get("tenantId", &tenantId)
 						//c.Set("authToken", authToken)
 						auth := &f.Authentication{

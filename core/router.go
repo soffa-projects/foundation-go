@@ -96,7 +96,6 @@ type Middleware = func(Context) error
 
 type Route struct {
 	Transactional bool
-	Roles         []string
 	Permissions   []string
 	Pre           []Middleware
 	Handle        func(Context) any
