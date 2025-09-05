@@ -1,7 +1,6 @@
 package f
 
 import (
-	"fmt"
 	"io/fs"
 
 	"github.com/soffa-projects/foundation-go/log"
@@ -45,52 +44,60 @@ func checkFeatures(features ...Feature) []Feature {
 }
 
 func orderFeatures(features []Feature) []Feature {
-	// Map features by name for lookup
+	// Map features by name for quick lookup
 	featureMap := make(map[string]Feature, len(features))
+	indegree := make(map[string]int, len(features)) // number of dependencies
+	graph := make(map[string][]string)              // adjacency list
+
+	// Initialize maps
 	for _, f := range features {
 		featureMap[f.Name] = f
+		if _, ok := indegree[f.Name]; !ok {
+			indegree[f.Name] = 0
+		}
 	}
 
-	visited := make(map[string]bool)
-	temp := make(map[string]bool) // for cycle detection
+	// Build graph and indegree count
+	for _, f := range features {
+		for _, dep := range f.DependsOn {
+			graph[dep.Name] = append(graph[dep.Name], f.Name)
+			indegree[f.Name]++
+		}
+	}
+
+	// Queue of features with no dependencies
+	queue := make([]string, 0)
+	for name, deg := range indegree {
+		if deg == 0 {
+			queue = append(queue, name)
+		}
+	}
+
+	// Perform topological sort
 	var ordered []Feature
+	for len(queue) > 0 {
+		// Pop from queue
+		name := queue[0]
+		queue = queue[1:]
 
-	var visit func(string) error
-
-	visit = func(name string) error {
-		if visited[name] {
-			return nil
-		}
-		if temp[name] {
-			log.Fatal("cyclic dependency detected: %s", name)
-		}
-
-		temp[name] = true
 		feat, ok := featureMap[name]
 		if !ok {
-			return fmt.Errorf("unknown dependency: %s", name)
+			log.Fatal("unknown feature: %s", name)
 		}
+		ordered = append(ordered, feat)
 
-		for _, dep := range feat.DependsOn {
-			if err := visit(dep.Name); err != nil {
-				return err
+		// Decrease indegree of dependents
+		for _, neigh := range graph[name] {
+			indegree[neigh]--
+			if indegree[neigh] == 0 {
+				queue = append(queue, neigh)
 			}
 		}
-
-		temp[name] = false
-		visited[name] = true
-		ordered = append(ordered, feat)
-		return nil
 	}
 
-	// Visit all features
-	for _, f := range features {
-		if !visited[f.Name] {
-			if err := visit(f.Name); err != nil {
-				log.Fatal("error visiting feature: %s -- %v", f.Name, err)
-				return nil
-			}
-		}
+	// Check for cycles
+	if len(ordered) != len(features) {
+		log.Fatal("cyclic dependency detected - %v  / %v", len(ordered), len(features))
 	}
 
 	return ordered
