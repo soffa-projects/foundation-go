@@ -51,6 +51,20 @@ func (m Map) GetString(key string) string {
 	return ""
 }
 
+func (m Map) GetBool(key string) bool {
+	if value, ok := m.values[key]; ok {
+		return value.(bool)
+	}
+	return false
+}
+
+func (m Map) GetInt(key string) int {
+	if value, ok := m.values[key]; ok {
+		return value.(int)
+	}
+	return 0
+}
+
 func (m Map) Set(key string, value any) Map {
 	m.values[key] = value
 	return m
