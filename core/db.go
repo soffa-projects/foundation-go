@@ -3,6 +3,8 @@ package f
 import (
 	"context"
 	"io/fs"
+
+	"github.com/soffa-projects/foundation-go/log"
 )
 
 type Entity any
@@ -80,7 +82,8 @@ func ds(ctx context.Context, defaultTenant bool) Connection {
 		value = ctx.Value(TenantCnx{})
 	}
 	if value == nil {
-		panic("MISSING_DS_IN_CONTEXT")
+		log.Error("MISSING_DS_IN_CONTEXT_CHECK_TENANT_MIDDLEWARE")
+		panic("MISSING_DS_IN_CONTEXT_CHECK_TENANT_MIDDLEWARE")
 	}
 	return value.(Connection)
 }
