@@ -1,43 +1,59 @@
-package f
+package adapters
 
 import (
 	"reflect"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 )
 
-type Component interface{}
+var (
+	registry = make(map[reflect.Type]any)
+	cache    = make(map[reflect.Type]any) // resolved singletons
+	mu       sync.RWMutex
+)
 
-var registry = make(map[any]any)
-
-func Register(key any, provider interface{}) {
-	registry[key] = provider
+// Provide registers a provider instance for type T
+func Provide[T any](provider T) {
+	t := reflect.TypeOf((*T)(nil)).Elem() // reflect type for interface or struct
+	mu.Lock()
+	defer mu.Unlock()
+	registry[t] = provider
+	log.Infof("[di] component registered %s", t.String())
 }
 
-func Resolve[T Component]() T {
-	instance := new(T)
-	rtype := reflect.TypeOf(instance)
-	for _, component := range registry {
-		cr := reflect.TypeOf(component)
-		if cr == rtype {
-			return component.(T)
-		}
-		if cr.Kind() == reflect.Ptr && cr.Elem() == rtype {
-			return component.(T)
-		}
+// Resolve returns the component of type T
+func Resolve[T any]() T {
+	t := reflect.TypeOf((*T)(nil)).Elem()
+
+	mu.RLock()
+	if c, ok := cache[t]; ok { // fast path (cached instance)
+		mu.RUnlock()
+		return c.(T)
 	}
-	log.Fatalf("failed to resolve component %v", instance)
-	return *instance
-}
+	mu.RUnlock()
 
-func ResolveByName[T interface{}](name string) T {
-	if component, ok := registry[name]; ok {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// check cache again in case another goroutine populated it
+	if c, ok := cache[t]; ok {
+		return c.(T)
+	}
+
+	if component, ok := registry[t]; ok {
+		cache[t] = component
 		return component.(T)
 	}
-	log.Fatalf("failed to resolve component %s", name)
-	panic("failed to resolve component")
+
+	log.Fatalf("failed to resolve component %s", t.String())
+	panic("failed to resolve component " + t.String())
 }
 
+// Clear wipes out all registrations and cache
 func Clear() {
-	registry = make(map[any]any)
+	mu.Lock()
+	defer mu.Unlock()
+	registry = make(map[reflect.Type]any)
+	cache = make(map[reflect.Type]any)
 }

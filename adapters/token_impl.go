@@ -157,3 +157,22 @@ func (p *defaultJwtProvider) VerifyWithIssuer(token string, issuer string) (jwt.
 	}
 	return tok, nil
 }
+
+type defaultCsrfTokenProvider struct {
+	f.CsrfTokenProvider
+	secret string
+}
+
+func NewCsrfTokenProvider() f.CsrfTokenProvider {
+	return &defaultCsrfTokenProvider{
+		secret: h.RandomString(32),
+	}
+}
+
+func (p *defaultCsrfTokenProvider) Create(duration time.Duration) (string, error) {
+	return h.NewCsrf(p.secret, duration)
+}
+
+func (p *defaultCsrfTokenProvider) Verify(token string) error {
+	return h.VerifyCsrf(p.secret, token)
+}

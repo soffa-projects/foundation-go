@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	echoSwagger "github.com/swaggo/echo-swagger"
+	"github.com/thoas/go-funk"
 	"github.com/ztrue/tracerr"
 
 	"github.com/go-playground/validator/v10"
@@ -29,18 +31,27 @@ import (
 const _authKey = "auth"
 const _authTokenKey = "authToken"
 const _tenantIdKey = "tenantId"
-const _envKey = "env"
 
 //const _connectionKey = "connection"
 
-func NewEchoRouter(cfg *f.RouterConfig) f.Router {
+type EchoRouterConfig struct {
+	Debug         bool
+	PublicFS      fs.FS
+	SessionSecret string
+	AllowOrigins  []string
+	SentryDSN     string
+	Env           string
+	TokenProvider f.TokenProvider
+}
+
+func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 	e := echo.New()
 	e.Use(prettylogger.Logger)
 	if cfg.Debug {
 		e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
 			LogLevel: 2,
 			LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
-				tracerr.PrintSourceColor(err, 2)
+				tracerr.PrintSourceColor(tracerr.Wrap(err), 1)
 				return err
 			},
 		}))
@@ -50,11 +61,9 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e.Use(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
 
-	if cfg.AssetsFS != nil {
-		e.StaticFS("/assets", cfg.AssetsFS)
-	}
-	if cfg.FaviconFS != nil {
-		e.FileFS("/favicon.ico", "favicon.ico", cfg.FaviconFS)
+	if cfg.PublicFS != nil {
+		e.FileFS("/favicon.ico", "favicon.ico", cfg.PublicFS)
+		e.StaticFS("/assets", cfg.PublicFS)
 	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
@@ -63,7 +72,7 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 		e.Use(session.Middleware(sessions.NewCookieStore([]byte(cfg.SessionSecret))))
 	}
 
-	if cfg != nil && cfg.AllowOrigins != nil {
+	if !funk.IsEmpty(cfg.AllowOrigins) {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 			AllowOrigins: cfg.AllowOrigins,
 			AllowHeaders: []string{"*"},
@@ -83,26 +92,26 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	}
 
 	return &routerImpl{
-		internal: e,
+		internal:      e,
+		tokenProvider: cfg.TokenProvider,
 	}
 }
 
-func (r *routerImpl) Init(env f.ApplicationEnv) {
-	r.env = env
+func (r *routerImpl) Init() {
 
 	r.internal.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			c.Set(_tenantIdKey, "")
 			c.Set(_authKey, (*f.Authentication)(nil))
-			c.Set(_envKey, env)
+			//c.Set(_envKey, env)
 			authToken := ""
 			authz := c.Request().Header.Get("Authorization")
 			if strings.HasPrefix(strings.ToLower(authz), "bearer ") {
 				authToken = authz[len("bearer "):]
 			}
 			if authToken != "" {
-				if env.TokenProvider != nil {
-					token, err := env.TokenProvider.Verify(authToken)
+				if r.tokenProvider != nil {
+					token, err := r.tokenProvider.Verify(authToken)
 					if err == nil {
 						sub, _ := token.Subject()
 						aud, _ := token.Audience()
@@ -210,21 +219,16 @@ func (c *ctxImpl) GetCookie(name string) string {
 
 type routerImpl struct {
 	f.Router
-	internal *echo.Echo
-	env      f.ApplicationEnv
+	internal      *echo.Echo
+	tokenProvider f.TokenProvider
 }
 
 type operationContextImpl struct {
 	inputSchema any
-	env         f.ApplicationEnv
 	router      echo.Context
 	tenantCnx   f.Connection
 	defaultCnx  f.Connection
 	context.Context
-}
-
-func (r *operationContextImpl) Env() f.ApplicationEnv {
-	return r.env
 }
 
 func (r *operationContextImpl) Redirect(url string, status ...int) error {
@@ -302,14 +306,13 @@ func (r *routerImpl) AddOperation(operation f.Operation) {
 		methods = []string{httpTransport.Method}
 	}
 	path := httpTransport.Path
-	env := r.env
+	datasource := f.Resolve[f.DataSource]()
 
 	handler := func(c echo.Context) error {
 
 		ctx := &operationContextImpl{
 			router:      c,
 			inputSchema: operation.Schemas.Input,
-			env:         r.env,
 			Context:     c.Request().Context(),
 		}
 
@@ -337,8 +340,8 @@ func (r *routerImpl) AddOperation(operation f.Operation) {
 			}
 		}
 
-		if env.DS != nil {
-			ctx.defaultCnx = env.DS.DefaultConnection()
+		if datasource != nil {
+			ctx.defaultCnx = datasource.DefaultConnection()
 			if ctx.defaultCnx != nil {
 				tx, err := ctx.defaultCnx.Tx(ctx)
 				if err != nil {
@@ -348,7 +351,7 @@ func (r *routerImpl) AddOperation(operation f.Operation) {
 				ctx.Context = context.WithValue(ctx.Context, f.DefaultCnxKey{}, ctx.defaultCnx)
 			}
 			if tenantId != "" {
-				ctx.tenantCnx = env.DS.Connection(tenantId)
+				ctx.tenantCnx = datasource.Connection(tenantId)
 				if ctx.tenantCnx != nil {
 					tx, err := ctx.tenantCnx.Tx(ctx)
 					if err != nil {

@@ -1,4 +1,4 @@
-package f
+package adapters
 
 import (
 	"context"
@@ -28,7 +28,6 @@ type ResponseOpt struct {
 
 type Context interface {
 	context.Context
-	Env() ApplicationEnv
 	RealIP() string
 	UserAgent() string
 	//Send(value any, opt ...ResponseOpt) error
@@ -46,7 +45,7 @@ type Context interface {
 	Bind(value any) error
 }
 
-type OperationFn func(env ApplicationEnv) Operation
+type OperationFn func() Operation
 
 type HttpTransport struct {
 	Method  string

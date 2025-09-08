@@ -1,4 +1,4 @@
-package f
+package adapters
 
 import (
 	"fmt"
@@ -32,7 +32,7 @@ func TenantOptionalMiddleware(c Context) error {
 }
 
 func detectTenant(c Context) error {
-	env := c.Env()
+
 	tenantId := c.TenantId()
 	if tenantId == "" {
 		tenantId = c.Param("tenant")
@@ -47,11 +47,12 @@ func detectTenant(c Context) error {
 		tenantId = c.Host()
 	}
 	if tenantId != "" {
-		if env.TenantProvider == nil {
+		tenantProvider := Resolve[TenantProvider]()
+		if tenantProvider == nil {
 			return fmt.Errorf("TENANT_PROVIDER_NOT_SET")
 		}
 		tenantId = strings.ToLower(tenantId)
-		exists, err := env.TenantProvider.GetTenant(c, tenantId)
+		exists, err := tenantProvider.GetTenant(c, tenantId)
 		if err != nil {
 			return err
 		}

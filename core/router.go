@@ -1,4 +1,4 @@
-package f
+package adapters
 
 import (
 	"context"
@@ -7,17 +7,17 @@ import (
 )
 
 type RouterConfig struct {
-	AllowOrigins  []string
-	AssetsFS      fs.FS
-	FaviconFS     fs.FS
+	AllowOrigins []string
+	PublicFS     fs.FS
+	//FaviconFS     fs.FS
 	SessionSecret string
 	SentryDSN     string
-	Env           string
-	Debug         bool
+	//Env           string
+	//Debug         bool
 }
 
 type Router interface {
-	Init(env ApplicationEnv)
+	Init()
 	Handler() http.Handler
 	Listen(port int)
 	Shutdown(ctx context.Context) error

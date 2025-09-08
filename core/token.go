@@ -1,4 +1,4 @@
-package f
+package adapters
 
 import (
 	"time"
@@ -25,7 +25,6 @@ type CreateJwtConfig struct {
 type TokenProvider interface {
 	Create(cfg CreateJwtConfig) (string, error)
 	Verify(token string) (jwt.Token, error)
-	VerifyWithIssuer(token string, issuer string) (jwt.Token, error)
 }
 
 type CsrfTokenProvider interface {

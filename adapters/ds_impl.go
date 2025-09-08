@@ -28,7 +28,7 @@ const _defaultTenantId = "default"
 // DATA SOURCE IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-func NewMultiTenantDS(cfg ...f.DataSourceConfig) f.DataSource {
+func NewMultiTenantDS(cfg ...f.DataSourceConfig) *MultiTenantDataSource {
 	config := f.DataSourceConfig{}
 	if len(cfg) > 0 {
 		config = cfg[0]
@@ -45,11 +45,12 @@ func NewMultiTenantDS(cfg ...f.DataSourceConfig) f.DataSource {
 	return ds
 }
 
-func (ds *MultiTenantDataSource) Init(env f.ApplicationEnv, features []f.Feature) error {
-	if env.TenantProvider == nil {
-		return fmt.Errorf("TENANT_PROVIDER_REQUIRED")
-	}
-	ds.tenantProvider = env.TenantProvider
+func (ds *MultiTenantDataSource) UseTenantProvider(tenantProvider f.TenantProvider) *MultiTenantDataSource {
+	ds.tenantProvider = tenantProvider
+	return ds
+}
+
+func (ds *MultiTenantDataSource) Init(features []f.Feature) error {
 
 	for _, feature := range features {
 		if feature.FS != nil {

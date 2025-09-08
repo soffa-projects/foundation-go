@@ -1,3 +1,3 @@
-package f
+package adapters
 
 type ErrorReporter interface{}

@@ -1,4 +1,4 @@
-package f
+package adapters
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 )
 
 type DataSource interface {
-	Init(env ApplicationEnv, features []Feature) error
+	Init(features []Feature) error
 	DefaultConnection() Connection
 	Connection(tenantId string) Connection
 }
@@ -35,10 +35,11 @@ type TenantAlreadyExistsError struct {
 }
 
 type DataSourceConfig struct {
-	DatabaseUrl string
-	Prefix      string
-	Strategy    string
-	MigrationFS fs.FS
+	DatabaseUrl    string
+	Prefix         string
+	Strategy       string
+	MigrationFS    fs.FS
+	TenantProvider TenantProvider
 }
 
 type ConnectionConfig struct {

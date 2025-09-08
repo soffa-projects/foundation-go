@@ -1,4 +1,4 @@
-package f
+package adapters
 
 type HealthCheckComponent struct {
 	Status  string `json:"status,omitempty"`
