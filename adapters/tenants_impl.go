@@ -136,6 +136,7 @@ func (tp HttpTenantProvider) Load(ctx context.Context) ([]f.Tenant, error) {
 		Get(tp.target)
 
 	if err != nil {
+		log.Error("failed to load tenants: %v", err)
 		return nil, err
 	}
 	defaultCache.Set("tenants", tenants.Tenants)

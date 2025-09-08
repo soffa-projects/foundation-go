@@ -26,14 +26,16 @@ type HttpRes struct {
 }
 
 type HttpReq struct {
-	Body     any
-	Headers  map[string]string
-	Files    map[string]string
-	Form     map[string]string
-	Bearer   string
-	TenantId string
-	Result   any
-	Host     string
+	Body        any
+	Json        bool
+	ContentType string
+	Headers     map[string]string
+	Files       map[string]string
+	Form        map[string]string
+	Bearer      string
+	TenantId    string
+	Result      any
+	Host        string
 }
 
 type ApiDef struct {
@@ -90,6 +92,7 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 	var result map[string]any
 	bearerAuth := ""
 	tenantId := ""
+	q = q.SetHeader("Content-Type", "application/json")
 	for _, opt := range opts {
 		if opt.Body != nil {
 			q = q.SetBody(opt.Body)
@@ -120,6 +123,10 @@ func (c *RestClient) invoke(method string, path string, opts ...HttpReq) HttpRes
 			q = q.SetHeader("Host", opt.Host)
 			q = q.SetHeader("X-Forwarded-Host", opt.Host)
 		}
+		if opt.ContentType != "" {
+			q = q.SetHeader("Content-Type", opt.ContentType)
+		}
+
 	}
 	if bearerAuth == "" && c.bearer != "" {
 		bearerAuth = c.bearer
@@ -143,7 +150,18 @@ func (c *RestClient) Invoke(up ApiDef) HttpRes {
 }
 
 func (r HttpRes) IsOk() HttpRes {
-	r.assert.Equals(r.resp.StatusCode(), http.StatusOK)
+	code := r.resp.StatusCode()
+	r.assert.Equals(code, http.StatusOK)
+	return r
+}
+
+func (r HttpRes) GetHeader(key string, value *string) HttpRes {
+	*value = r.resp.Header().Get(key)
+	return r
+}
+
+func (r HttpRes) Print() HttpRes {
+	fmt.Printf("%+v\n", string(r.resp.Body()))
 	return r
 }
 

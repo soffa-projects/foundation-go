@@ -27,3 +27,8 @@ type TokenProvider interface {
 	Verify(token string) (jwt.Token, error)
 	VerifyWithIssuer(token string, issuer string) (jwt.Token, error)
 }
+
+type CsrfTokenProvider interface {
+	Create(duration time.Duration) (string, error)
+	Verify(token string) error
+}

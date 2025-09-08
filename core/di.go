@@ -14,19 +14,20 @@ func Register(name string, provider interface{}) {
 	registry[name] = provider
 }
 
-func Resolve[T Component](typ T) *T {
-	rtype := reflect.TypeOf(typ)
+func Resolve[T Component]() T {
+	instance := new(T)
+	rtype := reflect.TypeOf(instance)
 	for _, component := range registry {
 		cr := reflect.TypeOf(component)
 		if cr == rtype {
-			return component.(*T)
+			return component.(T)
 		}
 		if cr.Kind() == reflect.Ptr && cr.Elem() == rtype {
-			return component.(*T)
+			return component.(T)
 		}
 	}
-	log.Fatalf("failed to resolve component %v", typ)
-	return nil
+	log.Fatalf("failed to resolve component %v", instance)
+	return *instance
 }
 
 func ResolveByName[T interface{}](name string) T {

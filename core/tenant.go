@@ -3,6 +3,7 @@ package f
 import (
 	"fmt"
 	"io/fs"
+	"net/http"
 	"strings"
 
 	"github.com/soffa-projects/foundation-go/log"
@@ -18,23 +19,32 @@ type TenantProviderConfig struct {
 }
 
 func TenantMiddleware(c Context) error {
+	err := detectTenant(c)
+	if err != nil {
+		return c.Error(err.Error(), ResponseOpt{Code: http.StatusBadRequest})
+	}
+	return nil
+}
+
+func TenantOptionalMiddleware(c Context) error {
+	_ = detectTenant(c)
+	return nil
+}
+
+func detectTenant(c Context) error {
 	env := c.Env()
 	tenantId := c.TenantId()
 	if tenantId == "" {
 		tenantId = c.Param("tenant")
-		// log.Info("detecting tenant from param: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.QueryParam("tid")
-		// log.Info("detecting tenant from query param: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.Header("X-TenantId")
-		// log.Info("detecting tenant from header: %s", tenantId)
 	}
 	if tenantId == "" {
 		tenantId = c.Host()
-		// log.Info("detecting tenant from host: %s", tenantId)
 	}
 	if tenantId != "" {
 		if env.TenantProvider == nil {
@@ -47,16 +57,11 @@ func TenantMiddleware(c Context) error {
 		}
 		if exists == nil {
 			log.Info("invalid tenant received: %s", tenantId)
-			return c.BadRequest("INVALID_TENANT")
+			return fmt.Errorf("INVALID_TENANT_001")
 		}
 		c.SetTenant(exists.ID)
 	} else {
-		return c.BadRequest("TENANT_REQUIRED")
+		return fmt.Errorf("INVALID_TENANT_002")
 	}
-	return nil
-}
-
-func OptionalTenantMiddleware(c Context) error {
-	_ = TenantMiddleware(c)
 	return nil
 }

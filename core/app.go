@@ -8,27 +8,28 @@ import (
 )
 
 type App struct {
-	Router Router
 	Env    ApplicationEnv
+	Router Router
 }
 
 type ApplicationEnv struct {
-	AppName        string
-	Version        string
-	BrandLogo      string
-	Production     bool
-	JwtSecret      string
-	PublicURL      string
-	I18n           I18n
-	DS             DataSource
-	TenantProvider TenantProvider
-	TokenProvider  TokenProvider
-	EmailSender    EmailSender
-	PubSubProvider PubSubProvider
-	CacheProvider  CacheProvider
-	SecretProvider SecretsProvider
-	config         map[string]string
-	ErrorReporter  ErrorReporter
+	AppName           string
+	AppVersion        string
+	BrandLogo         string
+	Production        bool
+	JwtSecret         string
+	PublicURL         string
+	I18n              I18n
+	DS                DataSource
+	TenantProvider    TenantProvider
+	TokenProvider     TokenProvider
+	EmailSender       EmailSender
+	PubSubProvider    PubSubProvider
+	CacheProvider     CacheProvider
+	SecretProvider    SecretsProvider
+	CsrfTokenProvider CsrfTokenProvider
+	config            map[string]string
+	ErrorReporter     ErrorReporter
 }
 
 func Init(env ApplicationEnv, router Router, features []Feature) App {
@@ -59,24 +60,40 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 		}
 		Register(SecretProviderKey, env.SecretProvider)
 	}
+
+	env.CsrfTokenProvider = NewCsrfTokenProvider()
 	router.Init(env)
 
-	app := App{
+	mcp := newMCPServer(MCPServerConfig{
+		ToolsCapabilities:   true,
+		PromptsCapabilities: false,
+	})
+	mcp.Init(env)
+
+	for _, feature := range features {
+		if feature.InitRoutes != nil {
+			feature.InitRoutes(router)
+		}
+		if feature.Operations != nil {
+			for _, operation := range feature.Operations {
+				router.AddOperation(operation)
+				mcp.AddOperation(operation)
+			}
+		}
+	}
+	router.MCP("/mcp", mcp.HttpHandler())
+	return App{
 		Env:    env,
 		Router: router,
 	}
-	for _, feature := range features {
-		feature.InitRoutes(app.Router)
-	}
-
-	return app
 }
 
 func (app App) Start(port int) {
 	defer func() {
 		app.Shutdown(context.Background())
 	}()
-	log.Info("starting webserver")
+
+	log.Info("starting webserver...")
 	app.Router.Listen(port)
 }
 

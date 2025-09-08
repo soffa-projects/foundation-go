@@ -1,17 +1,18 @@
 package h
 
 import (
+	"context"
+
 	"github.com/a-h/templ"
-	"github.com/labstack/echo/v4"
 )
 
-func RenderTempl(ctx echo.Context, statusCode int, t templ.Component) error {
+func RenderTempl(ctx context.Context, t templ.Component) (string, error) {
 	buf := templ.GetBuffer()
 	defer templ.ReleaseBuffer(buf)
 
-	if err := t.Render(ctx.Request().Context(), buf); err != nil {
-		return err
+	if err := t.Render(ctx, buf); err != nil {
+		return "", err
 	}
 
-	return ctx.HTML(statusCode, buf.String())
+	return buf.String(), nil
 }

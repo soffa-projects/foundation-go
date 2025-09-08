@@ -8,8 +8,10 @@ import (
 )
 
 type Entity any
-type TenantCnx struct{}
-type DefaultCnx struct{}
+type TenantCnxKey struct{}
+type DefaultCnxKey struct{}
+type TenantKey struct{}
+type AuthenticationKey struct{}
 
 type Connection interface {
 	DatabaseUrl() string
@@ -77,9 +79,9 @@ func NewRepo(cnx Connection) Repo {
 func ds(ctx context.Context, defaultTenant bool) Connection {
 	var value any
 	if defaultTenant {
-		value = ctx.Value(DefaultCnx{})
+		value = ctx.Value(DefaultCnxKey{})
 	} else {
-		value = ctx.Value(TenantCnx{})
+		value = ctx.Value(TenantCnxKey{})
 	}
 	if value == nil {
 		log.Error("MISSING_DS_IN_CONTEXT_CHECK_TENANT_MIDDLEWARE")

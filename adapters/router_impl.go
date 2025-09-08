@@ -2,12 +2,14 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
 	"github.com/getsentry/sentry-go"
 	sentryecho "github.com/getsentry/sentry-go/echo"
 	"github.com/gorilla/sessions"
@@ -28,22 +30,23 @@ const _authKey = "auth"
 const _authTokenKey = "authToken"
 const _tenantIdKey = "tenantId"
 const _envKey = "env"
-const _csrfSecretKey = "csrfSecret"
 
 //const _connectionKey = "connection"
 
 func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e := echo.New()
 	e.Use(prettylogger.Logger)
-	e.Use(middleware.Recover())
-	/*e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
-		LogLevel: 2,
-		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
-			tracerr.PrintSourceColor(tracerr.Wrap(err))
-			return formatResponse(c, f.HttpResponse{
-				Code: http.StatusInternalServerError, Data: err.Error()})
-		},
-	}))*/
+	if cfg.Debug {
+		e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+			LogLevel: 1,
+			LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+				tracerr.PrintSourceColor(tracerr.Wrap(err), 1)
+				return err
+			},
+		}))
+	} else {
+		e.Use(middleware.Recover())
+	}
 	e.Use(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
 
@@ -55,22 +58,10 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
-	var csrfSecret string
-
 	if cfg.SessionSecret != "" {
 		e.Logger.Info("session secret found, enabling session middleware")
 		e.Use(session.Middleware(sessions.NewCookieStore([]byte(cfg.SessionSecret))))
-		csrfSecret = cfg.SessionSecret
-	} else {
-		csrfSecret = h.RandomString(32)
 	}
-
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			c.Set(_csrfSecretKey, csrfSecret)
-			return next(c)
-		}
-	})
 
 	if cfg != nil && cfg.AllowOrigins != nil {
 		e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
@@ -178,20 +169,7 @@ type Ctx struct {
 }
 */
 
-type ctxImpl struct {
-	context.Context
-	internal echo.Context
-	env      f.ApplicationEnv
-}
-
-func newRequestContext(c echo.Context, env f.ApplicationEnv) (f.Context, error) {
-	return &ctxImpl{
-		Context:  c.Request().Context(),
-		internal: c,
-		env:      env,
-	}, nil
-}
-
+/*
 func (c *ctxImpl) Unwrap() context.Context {
 	return c.internal.Request().Context()
 }
@@ -200,33 +178,7 @@ func (c *ctxImpl) Get(key string) any {
 	return c.internal.Get(key)
 }
 
-func (c *ctxImpl) AuthToken() string {
-	value := c.internal.Get(_authTokenKey)
-	if value == nil {
-		return ""
-	}
-	return value.(string)
-}
 
-func (c *ctxImpl) Auth() *f.Authentication {
-	value := c.internal.Get(_authKey)
-	if value == nil {
-		return nil
-	}
-	return value.(*f.Authentication)
-}
-
-func (c *ctxImpl) RealIP() string {
-	return c.internal.RealIP()
-}
-
-func (c *ctxImpl) Host() string {
-	return strings.ToLower(c.internal.Request().Host)
-}
-
-func (c *ctxImpl) UserAgent() string {
-	return c.internal.Request().UserAgent()
-}
 
 func (c *ctxImpl) Request() *http.Request {
 	return c.internal.Request()
@@ -253,292 +205,259 @@ func (c *ctxImpl) GetCookie(name string) string {
 	return cookie.Value
 }
 
-func (c *ctxImpl) NewCsrfToken(duration time.Duration) (string, error) {
-	secret := c.internal.Get(_csrfSecretKey).(string)
-	return h.NewCsrf(secret, duration)
-}
 
-// ValidateCSRFToken checks if a CSRF token is valid and not expired.
-func (c *ctxImpl) ValidateCsrfToken(token string) error {
-	secret := c.internal.Get(_csrfSecretKey).(string)
-	return h.VerifyCsrf(secret, token)
-}
+*/
 
 type routerImpl struct {
+	f.Router
 	internal *echo.Echo
 	env      f.ApplicationEnv
 }
 
-type groupRouterImpl struct {
-	f.RouterGroup
-	internal *echo.Group
-	env      f.ApplicationEnv
-}
+/*
+	type groupRouterImpl struct {
+		f.RouterGroup
+		internal *echo.Group
+		env      f.ApplicationEnv
+	}
 
-func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGroup {
-	g := r.internal.Group(path)
+	func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGroup {
+		g := r.internal.Group(path)
 
-	if len(middlewares) > 0 {
-		for _, middleware := range middlewares {
-			g.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-				return func(c echo.Context) error {
-					rc, err := newRequestContext(c, r.env)
-					if err != nil {
-						return err
+		if len(middlewares) > 0 {
+			for _, middleware := range middlewares {
+				g.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+					return func(c echo.Context) error {
+						rc, err := newRequestContext(c, r.env)
+						if err != nil {
+							return err
+						}
+						if err := middleware(rc); err != nil {
+							return formatResponse(c, err)
+						}
+						return next(c)
 					}
-					if err := middleware(rc); err != nil {
-						return formatResponse(c, err)
-					}
-					return next(c)
-				}
-			})
+				})
+			}
+		}
+		return &groupRouterImpl{
+			internal: g,
+			env:      r.env,
 		}
 	}
-	return &groupRouterImpl{
-		internal: g,
-		env:      r.env,
+*/
+type operationContextImpl struct {
+	//f.OperationContext
+	inputSchema any
+	env         f.ApplicationEnv
+	router      echo.Context
+	tenantCnx   f.Connection
+	defaultCnx  f.Connection
+	context.Context
+}
+
+func (r *operationContextImpl) Env() f.ApplicationEnv {
+	return r.env
+}
+
+func (r *operationContextImpl) Send(value any, opt ...f.ResponseOpt) error {
+	st := http.StatusOK
+	if value == nil {
+		st = http.StatusNoContent
 	}
-}
-
-func (r *routerImpl) GET(path string, handler f.HandlerInit) {
-	r.internal.GET(path, wrap(r.env, handler))
-}
-
-func (r *routerImpl) POST(path string, handler f.HandlerInit) {
-	r.internal.POST(path, wrap(r.env, handler))
-}
-
-func (r *routerImpl) DELETE(path string, handler f.HandlerInit) {
-	r.internal.DELETE(path, wrap(r.env, handler))
-}
-
-func (r *routerImpl) PUT(path string, handler f.HandlerInit) {
-	r.internal.PUT(path, wrap(r.env, handler))
-}
-
-func (r *routerImpl) PATCH(path string, handler f.HandlerInit) {
-	r.internal.PATCH(path, wrap(r.env, handler))
-}
-
-func (r *groupRouterImpl) GET(path string, handler f.HandlerInit) {
-	r.internal.GET(path, wrap(r.env, handler))
-}
-
-func (r *groupRouterImpl) POST(path string, handler f.HandlerInit) {
-	r.internal.POST(path, wrap(r.env, handler))
-}
-
-func (r *groupRouterImpl) DELETE(path string, handler f.HandlerInit) {
-	r.internal.DELETE(path, wrap(r.env, handler))
-}
-
-func (r *groupRouterImpl) PUT(path string, handler f.HandlerInit) {
-	r.internal.PUT(path, wrap(r.env, handler))
-}
-
-func (r *groupRouterImpl) PATCH(path string, handler f.HandlerInit) {
-	r.internal.PATCH(path, wrap(r.env, handler))
-}
-
-func (r *routerImpl) Use(middleware f.Middleware) {
-	r.internal.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			rc, err := newRequestContext(c, r.env)
-			if err != nil {
-				return err
-			}
-			if err := middleware(rc); err != nil {
-				return formatResponse(c, err)
-			}
-			return next(c)
+	response := r.router.Response()
+	contentType := "application/json"
+	for _, o := range opt {
+		if o.Code != 0 {
+			st = o.Code
 		}
-	})
-}
-
-func wrap(env f.ApplicationEnv, handlerInit f.HandlerInit) echo.HandlerFunc {
-
-	handler := handlerInit(env)
-	//isPublic := handler.Public
-
-	return func(c echo.Context) error {
-		// Authentication check
-
-		rc, err := newRequestContext(c, env)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err)
-		}
-		var cnx f.Connection
-
-		// Handle panics and transactions
-		defer func() {
-			if rec := recover(); rec != nil {
-				originalErr := rec.(error)
-				if !env.Production {
-					//debug.PrintStack()
-					log.Error("panic: %v", originalErr)
-					tracerr.PrintSourceColor(tracerr.Wrap(originalErr), 1)
-				}
-				if cnx != nil {
-					if err := cnx.Rollback(); err != nil {
-						log.Warn("db transaction rolled back: %v", err)
-					}
-				}
-				c.Error(formatResponse(c, originalErr))
-			} else {
-				if cnx != nil {
-					if err := cnx.Commit(); err != nil {
-						c.Error(c.JSON(http.StatusInternalServerError, err))
-					} else {
-						log.Debug("db transaction committed")
-					}
-				}
-			}
-		}()
-
-		if handler.Pre != nil {
-			for _, pre := range handler.Pre {
-				err := pre(rc)
-				if err != nil {
-					return formatResponse(c, err)
-				}
-			}
-		}
-
-		auth := rc.Auth()
-
-		if handler.Authenticated && auth == nil {
-			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth_01"})
-		}
-
-		if handler.Permissions != nil && auth == nil {
-			return formatResponse(c, f.HttpResponse{Code: http.StatusUnauthorized, Data: "unauthorized_no_auth_02"})
-		}
-
-		if handler.Permissions != nil && auth != nil {
-			if !h.ContainsAnyString(handler.Permissions, auth.Permissions) {
-				return formatResponse(c, f.HttpResponse{Code: http.StatusForbidden, Data: "forbidden_grants"})
-			}
-		}
-
-		var result any
-		tenantId := rc.TenantId()
-
-		if tenantId != "" {
-			log.Info("active tenant is: %s", tenantId)
-		}
-
-		if env.DS != nil {
-
-			cnx := env.DS.DefaultConnection()
-			if tenantId != "" {
-				cnx = env.DS.Connection(tenantId)
-			}
-			if cnx != nil {
-				tx, err := cnx.Tx(rc)
-				if err != nil {
-					return formatResponse(c, err)
-				}
-
-				result = handler.Handle(rc.WithValue(f.TenantCnx{}, tx).WithValue(f.DefaultCnx{}, env.DS.DefaultConnection()))
-			} else {
-				result = handler.Handle(rc)
-			}
-
-		} else {
-			result = handler.Handle(rc)
-		}
-
-		if result == nil {
-			return formatResponse(c, f.HttpResponse{Code: http.StatusNoContent, Data: nil})
-		}
-
-		switch v := result.(type) {
-		case f.HttpResponse, error, f.RedirectResponse:
-			return formatResponse(c, v)
-		default:
-			return c.JSON(http.StatusOK, result)
+		if o.ContentType != "" {
+			contentType = o.ContentType
 		}
 	}
+	if contentType == "application/json" {
+		return r.router.JSON(st, value)
+	}
+	response.Header().Set("Content-Type", contentType)
+	response.WriteHeader(st)
+	response.Write([]byte(value.(string)))
+	return nil
 }
 
-func formatResponse(c echo.Context, err any) error {
+func (r *operationContextImpl) Redirect(url string, status ...int) error {
+	st := http.StatusFound
+	if len(status) > 0 {
+		st = status[0]
+	}
+	return r.router.Redirect(st, url)
+}
 
-	if err == nil {
-		log.Error("unexpected empty error -- check that all interfaces have been implemented")
+func (r *operationContextImpl) Render(template templ.Component, status ...int) error {
+	html, err := h.RenderTempl(r.Context, template)
+	if err != nil {
+		return err
+	}
+	st := http.StatusOK
+	if len(status) > 0 {
+		st = status[0]
+	}
+	return r.router.HTML(st, html)
+}
+
+func (c *operationContextImpl) Auth() *f.Authentication {
+	value := c.router.Get(_authKey)
+	if value == nil {
 		return nil
 	}
-
-	if redirect, ok := err.(f.RedirectResponse); ok {
-		return c.Redirect(redirect.Code, redirect.Url)
-	}
-
-	if _, ok := err.(f.HttpResponse); !ok {
-		log.Error("unexpected error: %v", err)
-		return c.JSON(http.StatusInternalServerError, err)
-	}
-
-	resp := err.(f.HttpResponse)
-
-	if resp.Code == 204 {
-		return c.NoContent(resp.Code)
-	}
-
-	if resp.Code >= 500 {
-		log.Error("unexpected error: %v", err)
-		return mapError(c, resp.Code, "err_technical", "err_unexpected_error")
-	}
-
-	if resp.Code >= 400 {
-		log.Error("functional error: %v", err)
-		return mapError(c, resp.Code, "err_functional", resp.Data)
-	}
-
-	if resp.Template != nil {
-		return h.RenderTempl(c, http.StatusOK, resp.Template)
-	}
-
-	if resp.File {
-
-		c.Response().Header().Set("Access-Control-Expose-Headers", "Content-Type,Content-Disposition, X-Filename")
-		c.Response().Header().Set("Content-Type", resp.ContentType)
-		c.Response().Header().Set("X-Filename", resp.Filename)
-		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", resp.Filename))
-
-		return c.Blob(
-			resp.Code,
-			resp.ContentType,
-			resp.Data.([]byte),
-		)
-	}
-
-	return c.JSON(resp.Code, resp.Data)
+	return value.(*f.Authentication)
 }
 
-func mapError(c echo.Context, status int, kind string, error any) error {
-	return c.JSON(status, map[string]any{
-		"requestId": c.Response().Header().Get(echo.HeaderXRequestID),
-		"kind":      kind,
+func (c *operationContextImpl) AuthToken() string {
+	value := c.router.Get(_authTokenKey)
+	if value == nil {
+		return ""
+	}
+	return value.(string)
+}
+
+func (c *operationContextImpl) RealIP() string {
+	return c.router.RealIP()
+}
+
+func (c *operationContextImpl) UserAgent() string {
+	return c.router.Request().UserAgent()
+}
+
+func (r *operationContextImpl) Error(error string, opt ...f.ResponseOpt) error {
+	st := http.StatusInternalServerError
+	for _, o := range opt {
+		if o.Code != 0 {
+			st = o.Code
+		}
+	}
+	response := r.router.Response()
+	requestt := r.router.Request()
+
+	return r.router.JSON(st, map[string]any{
+		"requestId": response.Header().Get(echo.HeaderXRequestID),
 		"timestamp": time.Now().Format(time.RFC3339),
-		"uri":       c.Request().URL.Path,
+		"uri":       requestt.URL.Path,
 		"error":     error,
 		"success":   false,
 	})
 }
 
-func (c *ctxImpl) Param(value string) string {
-	return c.internal.Param(value)
+func (r *routerImpl) AddOperation(operation f.Operation) {
+	methods := []string{http.MethodGet}
+	if operation.Methods != nil {
+		methods = operation.Methods
+	} else if operation.Method != "" {
+		methods = []string{operation.Method}
+	}
+	path := operation.Path
+	env := r.env
+
+	handler := func(c echo.Context) error {
+
+		ctx := &operationContextImpl{
+			router:      c,
+			inputSchema: operation.InputSchema,
+			env:         r.env,
+			Context:     c.Request().Context(),
+		}
+
+		auth := ctx.Auth()
+
+		for _, middleware := range operation.Middlewares {
+			if err := middleware(ctx); err != nil {
+				return err
+			}
+		}
+
+		tenantId := ctx.TenantId()
+
+		if operation.Authenticated && auth == nil {
+			return ctx.Error("unauthorized_no_auth_01", f.ResponseOpt{Code: http.StatusUnauthorized})
+		}
+
+		if operation.Permissions != nil && auth == nil {
+			return ctx.Error("unauthorized_no_auth_02", f.ResponseOpt{Code: http.StatusUnauthorized})
+		}
+
+		if operation.Permissions != nil && auth != nil {
+			if !h.ContainsAnyString(operation.Permissions, auth.Permissions) {
+				return ctx.Error("forbidden_grants", f.ResponseOpt{Code: http.StatusForbidden})
+			}
+		}
+
+		if env.DS != nil {
+			ctx.defaultCnx = env.DS.DefaultConnection()
+			if ctx.defaultCnx != nil {
+				tx, err := ctx.defaultCnx.Tx(ctx)
+				if err != nil {
+					return err
+				}
+				ctx.defaultCnx = tx
+				ctx.Context = context.WithValue(ctx.Context, f.DefaultCnxKey{}, ctx.defaultCnx)
+			}
+			if tenantId != "" {
+				ctx.tenantCnx = env.DS.Connection(tenantId)
+				if ctx.tenantCnx != nil {
+					tx, err := ctx.tenantCnx.Tx(ctx)
+					if err != nil {
+						return err
+					}
+					ctx.tenantCnx = tx
+					ctx.Context = context.WithValue(ctx.Context, f.TenantCnxKey{}, ctx.tenantCnx)
+				}
+			}
+		}
+
+		ctx.Context = context.WithValue(ctx.Context, f.TenantKey{}, tenantId)
+		ctx.Context = context.WithValue(ctx.Context, f.AuthenticationKey{}, auth)
+
+		return operation.Handle(ctx)
+	}
+
+	for _, method := range methods {
+		switch method {
+		case http.MethodGet:
+			r.internal.GET(path, handler)
+		case http.MethodPost:
+			r.internal.POST(path, handler)
+		case http.MethodDelete:
+			r.internal.DELETE(path, handler)
+		case http.MethodPut:
+			r.internal.PUT(path, handler)
+		case http.MethodPatch:
+			r.internal.PATCH(path, handler)
+		default:
+			log.Fatal("invalid http method: %s", method)
+		}
+	}
 }
 
-func (c *ctxImpl) QueryParam(value string) string {
-	return c.internal.QueryParam(value)
+func (r *routerImpl) MCP(path string, handler http.Handler) {
+	wrapped := echo.WrapHandler(handler)
+	r.internal.POST(path, wrapped)
+	r.internal.GET(path, wrapped)
+	r.internal.Any(path+"/*", wrapped)
 }
-func (c *ctxImpl) FormFile(field string) (io.ReadCloser, error) {
-	file, err := c.internal.FormFile(field)
+
+func (c *operationContextImpl) Param(value string) string {
+	return c.router.Param(value)
+}
+
+func (c *operationContextImpl) QueryParam(value string) string {
+	return c.router.QueryParam(value)
+}
+func (c *operationContextImpl) FormFile(field string) (io.ReadCloser, error) {
+	file, err := c.router.FormFile(field)
 	if err != nil {
 		return nil, err
 	}
 	if file == nil {
-		return nil, c.BadRequest("err_file_required")
+		return nil, errors.New("err_file_required")
 	}
 	src, err := file.Open()
 	if err != nil {
@@ -547,57 +466,57 @@ func (c *ctxImpl) FormFile(field string) (io.ReadCloser, error) {
 	return src, nil
 }
 
-func (c *ctxImpl) Header(value string) string {
-	return c.internal.Request().Header.Get(value)
+func (c *operationContextImpl) Header(value string) string {
+	return c.router.Request().Header.Get(value)
 }
 
-func (c *ctxImpl) Set(key string, value any) {
-	c.internal.Set(key, value)
+func (c *operationContextImpl) Set(key string, value any) {
+	c.router.Set(key, value)
 }
 
-func (c *ctxImpl) Env() f.ApplicationEnv {
-	return c.env
-}
-
-func (c *ctxImpl) Bind(input any) {
+func (c *operationContextImpl) Bind(input any) error {
 	err := c.ShouldBind(input)
-	if err != nil {
-		panic(err)
-	}
+	return err
 }
 
-func (c *ctxImpl) SetTenant(tenantId string) {
+func (c *operationContextImpl) Host() string {
+	return strings.ToLower(c.router.Request().Host)
+}
+
+func (c *operationContextImpl) SetTenant(tenantId string) {
 	c.Set(_tenantIdKey, tenantId)
+	c.Context = context.WithValue(c.Context, f.TenantKey{}, tenantId)
 }
 
-func (c *ctxImpl) WithValue(key, value any) f.Context {
-	return &ctxImpl{
-		Context:  context.WithValue(c.Context, key, value),
-		internal: c.internal,
-		env:      c.env,
+/*
+	func (c *ctxImpl) WithValue(key, value any) f.Context {
+		return &ctxImpl{
+			Context:  context.WithValue(c.Context, key, value),
+			internal: c.internal,
+			env:      c.env,
+		}
 	}
-}
-
-func (c *ctxImpl) TenantId() string {
-	value := c.internal.Get(_tenantIdKey)
+*/
+func (c *operationContextImpl) TenantId() string {
+	value := c.router.Get(_tenantIdKey)
 	if value == nil {
 		return ""
 	}
 	return value.(string)
 }
 
-func (c *ctxImpl) ShouldBind(input any) error {
+func (c *operationContextImpl) ShouldBind(input any) error {
 	binder := &echo.DefaultBinder{}
-	if err := binder.BindHeaders(c.internal, input); err != nil {
+	if err := binder.BindHeaders(c.router, input); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	if err := binder.BindQueryParams(c.internal, input); err != nil {
+	if err := binder.BindQueryParams(c.router, input); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	if err := binder.BindPathParams(c.internal, input); err != nil {
+	if err := binder.BindPathParams(c.router, input); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
-	if err := binder.BindBody(c.internal, input); err != nil {
+	if err := binder.BindBody(c.router, input); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 	validate := validator.New()
@@ -607,23 +526,7 @@ func (c *ctxImpl) ShouldBind(input any) error {
 	return nil
 }
 
-func (c *ctxImpl) SetFlash(value string) error {
-	return c.SetSession("flash", value, 15)
-}
-
-func (c *ctxImpl) UseFlash() (string, error) {
-	sess, err := session.Get("session", c.internal)
-	if err != nil {
-		return "", err
-	}
-	value, ok := sess.Values["flash"]
-	c.SetFlash("")
-	if !ok {
-		return "", nil
-	}
-	return value.(string), nil
-}
-
+/*
 func (c *ctxImpl) SetSession(key string, value string, maxAge int) error {
 	sess, err := session.Get("session", c.internal)
 	if err != nil {
@@ -649,38 +552,4 @@ func (c *ctxImpl) File(data []byte, contentType string, filename string) f.HttpR
 	}
 }
 
-func (c *ctxImpl) Created(output any) f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusCreated, Data: output}
-}
-
-func (c *ctxImpl) Conflict(message string) f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusConflict, Data: message}
-}
-
-func (c *ctxImpl) NoContent() f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusNoContent}
-}
-
-func (c *ctxImpl) OK() f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusOK}
-}
-
-func (c *ctxImpl) BadRequest(message string) f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusBadRequest, Data: message}
-}
-
-func (c *ctxImpl) NotFound(message string) f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusNotFound, Data: message}
-}
-
-func (c *ctxImpl) Unauthorized(message string) f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusUnauthorized, Data: message}
-}
-
-func (c *ctxImpl) Forbidden(message string) f.HttpResponse {
-	return f.HttpResponse{Code: http.StatusForbidden, Data: message}
-}
-
-func (c *ctxImpl) Redirect(code int, url string) f.RedirectResponse {
-	return f.RedirectResponse{Code: code, Url: url}
-}
+*/
