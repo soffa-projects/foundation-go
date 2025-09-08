@@ -32,7 +32,7 @@ type ApplicationEnv struct {
 	ErrorReporter     ErrorReporter
 }
 
-func Init(env ApplicationEnv, router Router, features []Feature) App {
+func Create(env ApplicationEnv, router Router, features []Feature) App {
 	h.InitIdGenerator(0)
 
 	features = checkFeatures(features...)
@@ -53,6 +53,11 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 			log.Fatal("failed to initialize pubsub provider: %v", err)
 		}
 		Register(PubSubProviderKey, env.PubSubProvider)
+	}
+	if env.DS != nil && env.PubSubProvider != nil {
+		env.PubSubProvider.Subscribe(context.Background(), "tenant_created", func(ctx context.Context, message string) {
+			FireEvent(ctx, "tenant_created", map[string]any{})
+		})
 	}
 	if env.SecretProvider != nil {
 		if err := env.SecretProvider.Init(); err != nil {
@@ -76,8 +81,15 @@ func Init(env ApplicationEnv, router Router, features []Feature) App {
 		}
 		if feature.Operations != nil {
 			for _, operation := range feature.Operations {
-				router.AddOperation(operation)
-				mcp.AddOperation(operation)
+				op := operation(env)
+				router.AddOperation(op)
+				if op.Transport.Http.Path != "" {
+					log.Info("operation %s added to HTTP transport", op.Name)
+				}
+				if op.Transport.Mcp {
+					mcp.AddOperation(op)
+					log.Info("operation %s added to MCP transport", op.Name)
+				}
 			}
 		}
 	}

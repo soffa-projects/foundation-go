@@ -8,10 +8,10 @@ import (
 
 type Component interface{}
 
-var registry = make(map[string]any)
+var registry = make(map[any]any)
 
-func Register(name string, provider interface{}) {
-	registry[name] = provider
+func Register(key any, provider interface{}) {
+	registry[key] = provider
 }
 
 func Resolve[T Component]() T {
@@ -39,5 +39,5 @@ func ResolveByName[T interface{}](name string) T {
 }
 
 func Clear() {
-	registry = make(map[string]any)
+	registry = make(map[any]any)
 }

@@ -21,7 +21,7 @@ type TenantProviderConfig struct {
 func TenantMiddleware(c Context) error {
 	err := detectTenant(c)
 	if err != nil {
-		return c.Error(err.Error(), ResponseOpt{Code: http.StatusBadRequest})
+		return OperationError{Err: err, Code: http.StatusBadRequest}
 	}
 	return nil
 }

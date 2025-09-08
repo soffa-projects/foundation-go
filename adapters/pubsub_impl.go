@@ -72,7 +72,7 @@ func (p *RedisPubSubProvider) Publish(ctx context.Context, topic string, message
 	return nil
 }
 
-func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message string)) {
+func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handler func(ctx context.Context, message string)) {
 	go func() {
 		sub := p.client.Subscribe(ctx, topic)
 		defer sub.Close()
@@ -88,7 +88,7 @@ func (p *RedisPubSubProvider) Subscribe(ctx context.Context, topic string, handl
 				continue
 			}
 			log.Debug("[redis] event received: %s", msg.Payload)
-			go handler(msg.Payload)
+			go handler(ctx, msg.Payload)
 		}
 	}()
 }
@@ -105,14 +105,14 @@ type FakePubSubProvider struct {
 	f.PubSubProvider
 	sent        map[string]int
 	received    map[string]int
-	subscribers map[string][]func(message string)
+	subscribers map[string][]func(ctx context.Context, message string)
 }
 
 func NewFakePubSubProvider() f.PubSubProvider {
 	return &FakePubSubProvider{
 		sent:        make(map[string]int),
 		received:    make(map[string]int),
-		subscribers: make(map[string][]func(message string)),
+		subscribers: make(map[string][]func(ctx context.Context, message string)),
 	}
 }
 
@@ -129,12 +129,12 @@ func (p *FakePubSubProvider) Publish(ctx context.Context, topic string, message 
 	handlers := p.subscribers[topic]
 	for _, handler := range handlers {
 		p.received[topic]++
-		go handler(message)
+		go handler(ctx, message)
 	}
 	return nil
 }
 
-func (p *FakePubSubProvider) Subscribe(ctx context.Context, topic string, handler func(message string)) {
+func (p *FakePubSubProvider) Subscribe(ctx context.Context, topic string, handler func(ctx context.Context, message string)) {
 	p.subscribers[topic] = append(p.subscribers[topic], handler)
 }
 

@@ -2,8 +2,6 @@ package f
 
 import (
 	"context"
-
-	"github.com/a-h/templ"
 )
 
 type Resource struct {
@@ -15,10 +13,8 @@ type ResourceList struct {
 	Items []Resource
 }
 
-type Result struct {
-	Success     bool
+type Response struct {
 	Code        int
-	Type        string
 	Message     string
 	Error       error
 	Data        any
@@ -35,10 +31,10 @@ type Context interface {
 	Env() ApplicationEnv
 	RealIP() string
 	UserAgent() string
-	Send(value any, opt ...ResponseOpt) error
-	Render(template templ.Component, status ...int) error
-	Redirect(url string, status ...int) error
-	Error(error string, opt ...ResponseOpt) error
+	//Send(value any, opt ...ResponseOpt) error
+	//Render(template templ.Component, status ...int) error
+	//Redirect(url string, status ...int) error
+	//Error(error string, opt ...ResponseOpt) error
 	TenantId() string
 	Param(value string) string
 	QueryParam(value string) string
@@ -50,16 +46,31 @@ type Context interface {
 	Bind(value any) error
 }
 
+type OperationFn func(env ApplicationEnv) Operation
+
+type HttpTransport struct {
+	Method  string
+	Methods []string
+	Path    string
+}
+
+type Transport struct {
+	Http HttpTransport
+	Mcp  bool
+}
+
+type Schemas struct {
+	Input  any
+	Output any
+}
+
 type Operation struct {
 	Context       Context
 	Name          string
 	Description   string
-	InputSchema   any
-	OutputSchema  any
-	Handle        func(ctx Context) error
-	Method        string
-	Methods       []string
-	Path          string
+	Schemas       Schemas
+	Handle        func(ctx Context) (any, error)
+	Transport     Transport
 	Middlewares   []Middleware
 	Authenticated bool
 	Permissions   []string
@@ -70,6 +81,6 @@ type OperationError struct {
 	Err  error
 }
 
-func (e *OperationError) Error() string {
+func (e OperationError) Error() string {
 	return e.Err.Error()
 }

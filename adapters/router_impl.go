@@ -38,9 +38,9 @@ func NewEchoRouter(cfg *f.RouterConfig) f.Router {
 	e.Use(prettylogger.Logger)
 	if cfg.Debug {
 		e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
-			LogLevel: 1,
+			LogLevel: 2,
 			LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
-				tracerr.PrintSourceColor(tracerr.Wrap(err), 1)
+				tracerr.PrintSourceColor(err, 2)
 				return err
 			},
 		}))
@@ -214,40 +214,7 @@ type routerImpl struct {
 	env      f.ApplicationEnv
 }
 
-/*
-	type groupRouterImpl struct {
-		f.RouterGroup
-		internal *echo.Group
-		env      f.ApplicationEnv
-	}
-
-	func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.RouterGroup {
-		g := r.internal.Group(path)
-
-		if len(middlewares) > 0 {
-			for _, middleware := range middlewares {
-				g.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-					return func(c echo.Context) error {
-						rc, err := newRequestContext(c, r.env)
-						if err != nil {
-							return err
-						}
-						if err := middleware(rc); err != nil {
-							return formatResponse(c, err)
-						}
-						return next(c)
-					}
-				})
-			}
-		}
-		return &groupRouterImpl{
-			internal: g,
-			env:      r.env,
-		}
-	}
-*/
 type operationContextImpl struct {
-	//f.OperationContext
 	inputSchema any
 	env         f.ApplicationEnv
 	router      echo.Context
@@ -258,30 +225,6 @@ type operationContextImpl struct {
 
 func (r *operationContextImpl) Env() f.ApplicationEnv {
 	return r.env
-}
-
-func (r *operationContextImpl) Send(value any, opt ...f.ResponseOpt) error {
-	st := http.StatusOK
-	if value == nil {
-		st = http.StatusNoContent
-	}
-	response := r.router.Response()
-	contentType := "application/json"
-	for _, o := range opt {
-		if o.Code != 0 {
-			st = o.Code
-		}
-		if o.ContentType != "" {
-			contentType = o.ContentType
-		}
-	}
-	if contentType == "application/json" {
-		return r.router.JSON(st, value)
-	}
-	response.Header().Set("Content-Type", contentType)
-	response.WriteHeader(st)
-	response.Write([]byte(value.(string)))
-	return nil
 }
 
 func (r *operationContextImpl) Redirect(url string, status ...int) error {
@@ -348,20 +291,24 @@ func (r *operationContextImpl) Error(error string, opt ...f.ResponseOpt) error {
 }
 
 func (r *routerImpl) AddOperation(operation f.Operation) {
-	methods := []string{http.MethodGet}
-	if operation.Methods != nil {
-		methods = operation.Methods
-	} else if operation.Method != "" {
-		methods = []string{operation.Method}
+	if operation.Transport.Http.Path == "" {
+		return
 	}
-	path := operation.Path
+	httpTransport := operation.Transport.Http
+	methods := []string{http.MethodGet}
+	if httpTransport.Methods != nil {
+		methods = httpTransport.Methods
+	} else if httpTransport.Method != "" {
+		methods = []string{httpTransport.Method}
+	}
+	path := httpTransport.Path
 	env := r.env
 
 	handler := func(c echo.Context) error {
 
 		ctx := &operationContextImpl{
 			router:      c,
-			inputSchema: operation.InputSchema,
+			inputSchema: operation.Schemas.Input,
 			env:         r.env,
 			Context:     c.Request().Context(),
 		}
@@ -370,7 +317,7 @@ func (r *routerImpl) AddOperation(operation f.Operation) {
 
 		for _, middleware := range operation.Middlewares {
 			if err := middleware(ctx); err != nil {
-				return err
+				return formatError(ctx.router, err)
 			}
 		}
 
@@ -416,7 +363,12 @@ func (r *routerImpl) AddOperation(operation f.Operation) {
 		ctx.Context = context.WithValue(ctx.Context, f.TenantKey{}, tenantId)
 		ctx.Context = context.WithValue(ctx.Context, f.AuthenticationKey{}, auth)
 
-		return operation.Handle(ctx)
+		response, err := operation.Handle(ctx)
+		if err != nil {
+			return formatError(ctx.router, err)
+		}
+
+		return formatResponse(ctx.router, response)
 	}
 
 	for _, method := range methods {
@@ -435,6 +387,59 @@ func (r *routerImpl) AddOperation(operation f.Operation) {
 			log.Fatal("invalid http method: %s", method)
 		}
 	}
+}
+
+func formatError(ctx echo.Context, err error) error {
+	code := http.StatusInternalServerError
+	errorMessage := err.Error()
+	if errors.Is(err, f.OperationError{}) {
+		code = http.StatusBadRequest
+		er := err.(f.OperationError)
+		if er.Code != 0 {
+			code = er.Code
+		}
+	}
+	return ctx.JSON(code, map[string]any{
+		"requestId": ctx.Response().Header().Get(echo.HeaderXRequestID),
+		"timestamp": time.Now().Format(time.RFC3339),
+		"uri":       ctx.Request().URL.Path,
+		"error":     errorMessage,
+		"success":   false,
+	})
+	// return tracerr.Wrap(err)
+}
+
+func formatResponse(ctx echo.Context, res any) error {
+
+	var wrapped f.Response
+
+	if _, ok := res.(f.Response); ok {
+		wrapped = res.(f.Response)
+	} else {
+		wrapped = f.Response{
+			Data: res,
+		}
+	}
+
+	st := http.StatusOK
+	if wrapped.Data == nil {
+		st = http.StatusNoContent
+	}
+	response := ctx.Response()
+	contentType := "application/json"
+	if wrapped.Code != 0 {
+		st = wrapped.Code
+	}
+	if wrapped.ContentType != "" {
+		contentType = wrapped.ContentType
+	}
+	if contentType == "application/json" {
+		return ctx.JSON(st, wrapped.Data)
+	}
+	response.Header().Set("Content-Type", contentType)
+	response.WriteHeader(st)
+	response.Write([]byte(wrapped.Data.(string)))
+	return nil
 }
 
 func (r *routerImpl) MCP(path string, handler http.Handler) {

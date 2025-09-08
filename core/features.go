@@ -16,7 +16,7 @@ type Feature struct {
 	DependsOn  []Feature
 	Init       func(env *ApplicationEnv) error
 	InitRoutes func(router Router)
-	Operations []Operation
+	Operations []OperationFn
 }
 
 func checkFeatures(features ...Feature) []Feature {

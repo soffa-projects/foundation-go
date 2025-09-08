@@ -40,14 +40,13 @@ func (s *mcpServerImpl) HttpHandler() http.Handler {
 
 type mcpOperationContextImpl struct {
 	Context
-	env    ApplicationEnv
-	result *mcp.CallToolResult
+	env ApplicationEnv
 }
 
 func (s *mcpServerImpl) AddOperation(operation Operation) {
 	var t mcp.Tool
-	if operation.InputSchema != nil {
-		schema := reflector.Reflect(operation.InputSchema)
+	if operation.Schemas.Input != nil {
+		schema := reflector.Reflect(operation.Schemas.Input)
 		jsonSchema, _ := json.MarshalIndent(schema, "", "  ")
 		t = mcp.NewToolWithRawSchema(operation.Name, operation.Description, jsonSchema)
 	} else {
@@ -57,9 +56,11 @@ func (s *mcpServerImpl) AddOperation(operation Operation) {
 		c := &mcpOperationContextImpl{
 			env: s.env,
 		}
-		err := operation.Handle(c)
-		internalResult := c.result
-		return internalResult, err
+		res, err := operation.Handle(c)
+		if err != nil {
+			return nil, err
+		}
+		return formatResponse(res), nil
 	})
 }
 
@@ -67,18 +68,22 @@ func (r *mcpOperationContextImpl) Env() ApplicationEnv {
 	return r.env
 }
 
-func (r *mcpOperationContextImpl) Send(value any, opt ...ResponseOpt) error {
-	if _, ok := value.(string); ok {
-		r.result = mcp.NewToolResultText(value.(string))
-		return nil
+func formatResponse(res any) *mcp.CallToolResult {
+	var wrapped Response
+	if _, ok := res.(Response); ok {
+		wrapped = res.(Response)
+	} else {
+		wrapped = Response{
+			Data: res,
+		}
 	}
-	r.result = mcp.NewToolResultStructured(value, "")
-	return nil
-}
-
-func (r *mcpOperationContextImpl) Error(error string, opt ...ResponseOpt) error {
-	r.result = mcp.NewToolResultError(error)
-	return nil
+	if wrapped.Error != nil {
+		return mcp.NewToolResultError(wrapped.Error.Error())
+	}
+	if _, ok := wrapped.Data.(string); ok {
+		return mcp.NewToolResultText(wrapped.Data.(string))
+	}
+	return mcp.NewToolResultStructured(wrapped.Data, "")
 }
 
 func (r *mcpOperationContextImpl) TenantId() string {

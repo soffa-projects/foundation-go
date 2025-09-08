@@ -28,10 +28,14 @@ const _defaultTenantId = "default"
 // DATA SOURCE IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-func NewMultiTenantDS(cfg f.DataSourceConfig) f.DataSource {
+func NewMultiTenantDS(cfg ...f.DataSourceConfig) f.DataSource {
+	config := f.DataSourceConfig{}
+	if len(cfg) > 0 {
+		config = cfg[0]
+	}
 	ds := &MultiTenantDataSource{
 		tenants: make(map[string]f.Connection),
-		cfg:     cfg,
+		cfg:     config,
 	}
 	migrationsFS := []fs.FS{}
 	if ds.cfg.MigrationFS != nil {
