@@ -255,7 +255,13 @@ func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.HttpRoute
 }
 
 func (r *routerImpl) GET(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.GET(path, wrapHandler(handler, r.ds, middlewares...))
+	nativeMiddlewares := make([]echo.MiddlewareFunc, 0)
+	for _, m := range middlewares {
+		if h.IsSameFunc(m, f.GzipMiddleware) {
+			nativeMiddlewares = append(nativeMiddlewares, middleware.Gzip())
+		}
+	}
+	r.internal.GET(path, wrapHandler(handler, r.ds, middlewares...), nativeMiddlewares...)
 }
 
 func (r *routerImpl) POST(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
@@ -277,7 +283,13 @@ func (r *routerImpl) PATCH(path string, handler func(c f.HttpContext) error, mid
 // ----
 
 func (r *groupRouterImpl) GET(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.GET(path, wrapHandler(handler, r.ds, middlewares...))
+	nativeMiddlewares := make([]echo.MiddlewareFunc, 0)
+	for _, m := range middlewares {
+		if h.IsSameFunc(m, f.GzipMiddleware) {
+			nativeMiddlewares = append(nativeMiddlewares, middleware.Gzip())
+		}
+	}
+	r.internal.GET(path, wrapHandler(handler, r.ds, middlewares...), nativeMiddlewares...)
 }
 
 func (r *groupRouterImpl) POST(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {

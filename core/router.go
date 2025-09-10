@@ -68,3 +68,9 @@ type Authentication struct {
 	Email       string
 	TenantId    string
 }
+
+type MiddlewareType int
+
+var gzipMiddleware = func(c Context) error { return nil }
+
+var GzipMiddleware = gzipMiddleware
