@@ -14,6 +14,7 @@ type App interface {
 	Start(port int)
 	Shutdown(ctx context.Context)
 	Router() Router
+	InstanceId() string
 }
 
 type AppInfo struct {
@@ -25,6 +26,7 @@ type AppInfo struct {
 type AppConfig = any
 
 type HttpRouter interface {
+	Group(path string, middlewares ...Middleware) HttpRouter
 	GET(path string, handler func(c HttpContext) error, middlewares ...Middleware)
 	POST(path string, handler func(c HttpContext) error, middlewares ...Middleware)
 	DELETE(path string, handler func(c HttpContext) error, middlewares ...Middleware)
@@ -46,16 +48,18 @@ type MCP struct {
 }
 
 type Feature struct {
-	Name      string
-	FS        fs.FS
-	DependsOn []Feature
-	Init      func(c InitContext)
+	Name       string
+	FS         fs.FS
+	DependsOn  []Feature
+	OnInit     func(c InitContext)
+	BeforeInit func(c InitContext)
 }
 
 type InitContext struct {
-	Config AppConfig
-	Router HttpRouter
-	MCP    McpRouter
+	InstanceId string
+	Config     AppConfig
+	Router     HttpRouter
+	MCP        McpRouter
 }
 
 /*

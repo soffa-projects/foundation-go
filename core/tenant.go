@@ -5,7 +5,10 @@ import (
 
 	"github.com/soffa-projects/foundation-go/errors"
 	"github.com/soffa-projects/foundation-go/h"
+	"github.com/soffa-projects/foundation-go/log"
 )
+
+const TenantCreatedEvent = "tenant_created"
 
 type TenantInput struct {
 	Tenant string `param:"tenant" header:"X-TenantId" json:"-" validate:"required"`
@@ -23,8 +26,9 @@ func TenantMiddleware(c Context) error {
 	return nil
 }
 
-func Authenticated(c Context) error {
+func AuthMiddleware(c Context) error {
 	if c.Auth() == nil {
+		log.Debug("auth middleware: auth is nil")
 		return errors.Unauthorized("UNAUTHORIZED_000")
 	}
 	return nil

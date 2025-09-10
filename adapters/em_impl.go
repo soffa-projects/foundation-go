@@ -18,7 +18,7 @@ func NewEntityManagerImpl(ds f.DataSource) f.EntityManager {
 }
 
 func (em *EntityManagerImpl) Default(ctx context.Context) f.Connection {
-	defaultCnx := ctx.Value(f.TenantKey{})
+	defaultCnx := ctx.Value(f.DefaultCnxKey{})
 	if defaultCnx == nil {
 		return nil
 	}
@@ -30,8 +30,9 @@ func (em *EntityManagerImpl) Tenant(ctx context.Context, tenantId string) f.Conn
 }
 
 func (em *EntityManagerImpl) Current(ctx context.Context) f.Connection {
-	if cnx, ok := ctx.Value(f.TenantCnxKey{}).(f.Connection); ok {
-		return cnx
+	tenantCnx := ctx.Value(f.TenantCnxKey{})
+	if tenantCnx != nil {
+		return tenantCnx.(f.Connection)
 	}
 	return em.Default(ctx)
 }

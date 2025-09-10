@@ -32,13 +32,15 @@ const _authTokenKey = "authToken"
 const _tenantIdKey = "tenantId"
 
 type EchoRouterConfig struct {
-	Debug         bool
-	PublicFS      fs.FS
-	SessionSecret string
-	AllowOrigins  []string
-	SentryDSN     string
-	Env           string
-	TokenProvider f.TokenProvider
+	Debug          bool
+	PublicFS       fs.FS
+	SessionSecret  string
+	AllowOrigins   []string
+	SentryDSN      string
+	Env            string
+	TokenProvider  f.TokenProvider
+	TenantProvider f.TenantProvider
+	DataSource     f.DataSource
 }
 
 func NewEchoRouter(cfg EchoRouterConfig) f.Router {
@@ -93,8 +95,10 @@ func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 	// Tenant middleware
 
 	return &routerImpl{
-		internal:      e,
-		tokenProvider: cfg.TokenProvider,
+		internal:       e,
+		tokenProvider:  cfg.TokenProvider,
+		tenantProvider: cfg.TenantProvider,
+		ds:             cfg.DataSource,
 	}
 }
 
@@ -104,17 +108,21 @@ func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 
 type routerImpl struct {
 	f.Router
-	internal      *echo.Echo
+	internal       *echo.Echo
+	tokenProvider  f.TokenProvider
+	ds             f.DataSource
+	tenantProvider f.TenantProvider
+}
+
+type groupRouterImpl struct {
+	f.HttpRouter
+	internal      *echo.Group
 	tokenProvider f.TokenProvider
-	dataSource    f.DataSource
+	ds            f.DataSource
+	//tenantProvider f.TenantProvider
 }
 
 func (r *routerImpl) Init() {
-
-	ds := f.Lookup[f.DataSource]()
-	if ds != nil {
-		r.dataSource = *ds
-	}
 
 	r.internal.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -174,9 +182,8 @@ func (r *routerImpl) Init() {
 
 			if tenantId != "" {
 				tenantId = strings.ToLower(tenantId)
-				tenantProvider := f.Lookup[f.TenantProvider]()
-				if tenantProvider != nil {
-					exists, err := (*tenantProvider).GetTenant(c.Request().Context(), tenantId)
+				if r.tenantProvider != nil {
+					exists, err := (r.tenantProvider).GetTenant(c.Request().Context(), tenantId)
 					if err != nil {
 						return err
 					}
@@ -213,33 +220,79 @@ func (r *routerImpl) Shutdown(ctx context.Context) error {
 	return r.internal.Shutdown(ctx)
 }
 
+func (r *routerImpl) Group(path string, middlewares ...f.Middleware) f.HttpRouter {
+	g := r.internal.Group(path, func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			ctx := &httpContextImpl{
+				internal: c,
+				Context:  c.Request().Context(),
+			}
+			for _, middleware := range middlewares {
+				if err := middleware(ctx); err != nil {
+					return formatError(c, err, 0)
+				}
+			}
+			return next(c)
+		}
+	})
+	return &groupRouterImpl{
+		internal:      g,
+		tokenProvider: r.tokenProvider,
+		ds:            r.ds,
+	}
+}
+
 func (r *routerImpl) GET(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.GET(path, r.wrapHandler(handler, middlewares...))
+	r.internal.GET(path, wrapHandler(handler, r.ds, middlewares...))
 }
 
 func (r *routerImpl) POST(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.POST(path, r.wrapHandler(handler, middlewares...))
+	r.internal.POST(path, wrapHandler(handler, r.ds, middlewares...))
 }
 
 func (r *routerImpl) DELETE(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.DELETE(path, r.wrapHandler(handler, middlewares...))
+	r.internal.DELETE(path, wrapHandler(handler, r.ds, middlewares...))
 }
 
 func (r *routerImpl) PUT(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.PUT(path, r.wrapHandler(handler, middlewares...))
+	r.internal.PUT(path, wrapHandler(handler, r.ds, middlewares...))
 }
 
 func (r *routerImpl) PATCH(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
-	r.internal.PATCH(path, r.wrapHandler(handler, middlewares...))
+	r.internal.PATCH(path, wrapHandler(handler, r.ds, middlewares...))
 }
 
-func (r *routerImpl) wrapHandler(handler func(c f.HttpContext) error, middlewares ...f.Middleware) echo.HandlerFunc {
+// ----
+
+func (r *groupRouterImpl) GET(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
+	r.internal.GET(path, wrapHandler(handler, r.ds, middlewares...))
+}
+
+func (r *groupRouterImpl) POST(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
+	r.internal.POST(path, wrapHandler(handler, r.ds, middlewares...))
+}
+
+func (r *groupRouterImpl) DELETE(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
+	r.internal.DELETE(path, wrapHandler(handler, r.ds, middlewares...))
+}
+
+func (r *groupRouterImpl) PUT(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
+	r.internal.PUT(path, wrapHandler(handler, r.ds, middlewares...))
+}
+
+func (r *groupRouterImpl) PATCH(path string, handler func(c f.HttpContext) error, middlewares ...f.Middleware) {
+	r.internal.PATCH(path, wrapHandler(handler, r.ds, middlewares...))
+}
+
+func wrapHandler(handler func(c f.HttpContext) error, dataSource f.DataSource, middlewares ...f.Middleware) echo.HandlerFunc {
 	return func(c echo.Context) error {
 
 		ctx := &httpContextImpl{
 			internal: c,
 			Context:  c.Request().Context(),
 		}
+
+		inTx := false
 
 		defer func() {
 
@@ -248,19 +301,23 @@ func (r *routerImpl) wrapHandler(handler func(c f.HttpContext) error, middleware
 
 			if err := recover(); err != nil {
 				tracerr.PrintSourceColor(tracerr.Wrap(err.(error)), 1)
-				if defaultCnx != nil {
-					defaultCnx.(f.Connection).Rollback()
-				}
-				if tenantCnx != nil {
-					tenantCnx.(f.Connection).Rollback()
+				if inTx {
+					if defaultCnx != nil {
+						defaultCnx.(f.Connection).Rollback()
+					}
+					if tenantCnx != nil {
+						tenantCnx.(f.Connection).Rollback()
+					}
 				}
 				formatError(ctx.internal, err.(error), http.StatusInternalServerError)
 			} else {
-				if defaultCnx != nil {
-					defaultCnx.(f.Connection).Commit()
-				}
-				if tenantCnx != nil {
-					tenantCnx.(f.Connection).Commit()
+				if inTx {
+					if defaultCnx != nil {
+						defaultCnx.(f.Connection).Commit()
+					}
+					if tenantCnx != nil {
+						tenantCnx.(f.Connection).Commit()
+					}
 				}
 			}
 		}()
@@ -275,24 +332,26 @@ func (r *routerImpl) wrapHandler(handler func(c f.HttpContext) error, middleware
 
 		tenantId := ctx.TenantId()
 
-		if r.dataSource != nil {
-			defaultCnx := r.dataSource.DefaultConnection()
+		if dataSource != nil {
+			defaultCnx := dataSource.DefaultConnection()
 			if defaultCnx != nil {
 				tx, err := defaultCnx.Tx(ctx)
 				if err != nil {
 					return err
 				}
 				defaultCnx = tx
+				inTx = true
 				ctx.Context = context.WithValue(ctx.Context, f.DefaultCnxKey{}, defaultCnx)
 			}
 			if ctx.TenantId() != "" {
-				tenantCnx := r.dataSource.Connection(ctx.TenantId())
+				tenantCnx := dataSource.Connection(ctx.TenantId())
 				if tenantCnx != nil {
 					tx, err := tenantCnx.Tx(ctx)
 					if err != nil {
 						return err
 					}
 					tenantCnx = tx
+					inTx = true
 					ctx.Context = context.WithValue(ctx.Context, f.TenantCnxKey{}, tenantCnx)
 				}
 			}
@@ -394,6 +453,7 @@ func (c *httpContextImpl) UserAgent() string {
 	return c.internal.Request().UserAgent()
 }
 
+/*
 func (c *httpContextImpl) EM(tenantId ...string) f.Connection {
 	defaultCnx := c.Value(f.DefaultCnxKey{})
 	tenantCnx := c.Value(f.TenantCnxKey{})
@@ -408,6 +468,7 @@ func (c *httpContextImpl) EM(tenantId ...string) f.Connection {
 	}
 	return nil
 }
+*/
 
 func (c *httpContextImpl) JSON(status int, data any) error {
 	return c.internal.JSON(status, data)
@@ -440,10 +501,16 @@ func (c *httpContextImpl) SetTenant(tenantId string) {
 
 func formatError(ctx echo.Context, err error, code int) error {
 	status := code
-	if errors.Is(err, errors.CustomError{}) {
-		status = err.(errors.CustomError).Code
+	if customError, ok := err.(errors.CustomError); ok {
+		status = customError.Code
+	}
+	if status == 0 {
+		status = http.StatusInternalServerError
 	}
 	errorMessage := err.Error()
+
+	log.Error("http-error: %v -- %v", status, errorMessage)
+
 	return ctx.JSON(status, map[string]any{
 		"requestId": ctx.Response().Header().Get(echo.HeaderXRequestID),
 		"timestamp": time.Now().Format(time.RFC3339),
@@ -463,113 +530,9 @@ func (r *routerImpl) MCP(path string, handler http.Handler) {
 
 /*
 
-
-func (r *routerImpl) AddOperation(operation f.Operation) {
-	if operation.Http.Path == "" {
-		return
-	}
-	httpTransport := operation.Http
-	methods := []string{http.MethodGet}
-	if httpTransport.Methods != nil {
-		methods = httpTransport.Methods
-	} else if httpTransport.Method != "" {
-		methods = []string{httpTransport.Method}
-	}
-	path := httpTransport.Path
-	//datasource := f.Resolve[f.DataSource]()
-
-	handler := func(c echo.Context) error {
-
-
-	}
-
-	for _, method := range methods {
-		switch method {
-		case http.MethodGet:
-			r.internal.GET(path, handler)
-		case http.MethodPost:
-			r.internal.POST(path, handler)
-		case http.MethodDelete:
-			r.internal.DELETE(path, handler)
-		case http.MethodPut:
-			r.internal.PUT(path, handler)
-		case http.MethodPatch:
-			r.internal.PATCH(path, handler)
-		default:
-			log.Fatal("invalid http method: %s", method)
-		}
-	}
-}
-
-
-func formatResponse(ctx echo.Context, res f.Response) error {
-
-	if res.Err != nil {
-		log.Error("http-error: %v", res.Err)
-		return ctx.JSON(http.StatusInternalServerError, map[string]any{
-			"requestId": ctx.Response().Header().Get(echo.HeaderXRequestID),
-			"timestamp": time.Now().Format(time.RFC3339),
-			"uri":       ctx.Request().URL.Path,
-			"error":     res.Err.Error(),
-			"success":   false,
-		})
-	}
-	data := res.Data
-	status := res.Code
-	if status == 0 {
-		status = http.StatusOK
-		if data == nil {
-			status = http.StatusNoContent
-		}
-	}
-	contentType := "application/json"
-	if res.Opts != nil {
-		for _, opt := range res.Opts {
-			if value, ok := opt.(f.HttpOpt); ok {
-				if value.ContentType != "" {
-					contentType = value.ContentType
-				}
-				if value.Redirect {
-					return ctx.Redirect(value.Code, data.(string))
-				}
-			}
-		}
-	}
-
-	if contentType == "application/json" {
-		return ctx.JSON(status, data)
-	}
-
-	if contentType == "text/html" {
-		if tpl, ok := data.(templ.Component); ok {
-			html, err := h.RenderTempl(ctx.Request().Context(), tpl)
-			if err != nil {
-				return err
-			}
-			return ctx.HTML(status, html)
-		}
-
-		if str, ok := data.(string); ok {
-			return ctx.HTML(status, str)
-		}
-
-	}
-
-	log.Warn("unsupported content type: %s", contentType)
-
-	return ctx.JSON(http.StatusInternalServerError, map[string]any{
-		"requestId": ctx.Response().Header().Get(echo.HeaderXRequestID),
-		"timestamp": time.Now().Format(time.RFC3339),
-		"uri":       ctx.Request().URL.Path,
-		"error":     fmt.Sprintf("UNSUPPORTED_CONTENT_TYPE: %s", contentType),
-		"success":   false,
-	})
-}
-
 func (c *operationContextImpl) Set(key any, value any) {
 	c.Context = context.WithValue(c.Context, key, value)
 }
-
 
 func (c *operationContextImpl) Param(value string) string {
 	return c.router.Param(value)
@@ -578,6 +541,7 @@ func (c *operationContextImpl) Param(value string) string {
 func (c *operationContextImpl) QueryParam(value string) string {
 	return c.router.QueryParam(value)
 }
+
 func (c *operationContextImpl) FormFile(field string) (io.ReadCloser, error) {
 	file, err := c.router.FormFile(field)
 	if err != nil {
@@ -606,17 +570,13 @@ func (c *operationContextImpl) Host() string {
 	return strings.ToLower(c.router.Request().Host)
 }
 
-
-*/
-
-/*
-	func (c *ctxImpl) WithValue(key, value any) f.Context {
-		return &ctxImpl{
-			Context:  context.WithValue(c.Context, key, value),
-			internal: c.internal,
-			env:      c.env,
-		}
+func (c *ctxImpl) WithValue(key, value any) f.Context {
+	return &ctxImpl{
+		Context:  context.WithValue(c.Context, key, value),
+		internal: c.internal,
+		env:      c.env,
 	}
+}
 
 func (c *operationContextImpl) TenantId() string {
 	value := c.router.Get(_tenantIdKey)
@@ -626,9 +586,6 @@ func (c *operationContextImpl) TenantId() string {
 	return value.(string)
 }
 
-
-
-/*
 func (c *ctxImpl) SetSession(key string, value string, maxAge int) error {
 	sess, err := session.Get("session", c.internal)
 	if err != nil {

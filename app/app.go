@@ -27,6 +27,7 @@ type builderConfig struct {
 	tenantProvider string
 	config         any
 	routerConfig   f.RouterConfig
+	instanceId     string
 }
 
 type AppBuilder struct {
@@ -35,7 +36,8 @@ type AppBuilder struct {
 
 type appImpl struct {
 	f.App
-	router f.Router
+	router     f.Router
+	instanceId string
 }
 
 func (app *appImpl) Start(port int) {
@@ -72,11 +74,13 @@ func New(name string, version string, envName string) AppBuilder {
 			appVersion: version,
 			envName:    envName,
 			config:     make(map[any]string),
+			instanceId: h.RandomString(32),
 		},
 	}
 }
 
 func (app AppBuilder) Init(features []f.Feature) f.App {
+
 	h.InitIdGenerator(0)
 
 	cfg := app.config
@@ -85,6 +89,8 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 		Version:   cfg.appVersion,
 		PublicURL: cfg.publicURL,
 	}
+	instanceId := cfg.instanceId
+
 	production := h.IsProduction(cfg.envName)
 	/*env := applicationEnvImpl{
 		appName:    app.config.appName,
@@ -96,14 +102,24 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 
 	features = checkFeatures(features...)
 
+	initContext := f.InitContext{
+		InstanceId: instanceId,
+		Config:     cfg.config,
+	}
+
 	for _, feature := range features {
-		if feature.Init == nil {
+		if feature.OnInit == nil {
 			log.Fatal("feature %s has no create function", feature.Name)
+		}
+		// Preload singletons here
+		if feature.BeforeInit != nil {
+			feature.BeforeInit(initContext)
 		}
 	}
 
 	var tenantProvider f.TenantProvider
 	var tokenProvider f.TokenProvider
+	var dataSource f.DataSource
 
 	if !funk.IsEmpty(cfg.i18n) {
 		adapter := adapters.NewLocalizer(cfg.i18n.LocaleFS, cfg.i18n.Locales)
@@ -112,6 +128,11 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	if !funk.IsEmpty(cfg.tenantProvider) {
 		tenantProvider = adapters.NewTenantProvider(cfg.tenantProvider)
 		f.Provide(tenantProvider)
+	} else {
+		adapter := f.Lookup[f.TenantProvider]()
+		if adapter != nil {
+			tenantProvider = *adapter
+		}
 	}
 	if cfg.dsConfig != nil {
 		adapter := adapters.NewMultiTenantDS(cfg.dsConfig...)
@@ -119,14 +140,15 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 			adapter.UseTenantProvider(tenantProvider)
 		}
 		if err := adapter.Init(features); err != nil {
-			log.Fatal("failed to initialize data source: %v", err)
+			log.Fatal("[000] failed to initialize wMultiTenantDS: %v", err)
 		}
 		// ds = adapter
+		dataSource = adapter
 		f.Provide[f.DataSource](adapter)
 		f.Provide(adapters.NewEntityManagerImpl(adapter))
 	}
 	if !funk.IsEmpty(cfg.emailSender) {
-		adapter := adapters.NewEmailSender(cfg.appName, cfg.envName)
+		adapter := adapters.NewEmailSender(cfg.appName, cfg.emailSender)
 		f.Provide(adapter)
 	}
 	if !funk.IsEmpty(cfg.pubSubProvider) {
@@ -167,13 +189,15 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	f.Provide(appInfo)
 
 	router := adapters.NewEchoRouter(adapters.EchoRouterConfig{
-		Debug:         !production,
-		PublicFS:      cfg.routerConfig.PublicFS,
-		SessionSecret: cfg.routerConfig.SessionSecret,
-		AllowOrigins:  cfg.routerConfig.AllowOrigins,
-		SentryDSN:     cfg.routerConfig.SentryDSN,
-		Env:           cfg.envName,
-		TokenProvider: tokenProvider,
+		Debug:          !production,
+		PublicFS:       cfg.routerConfig.PublicFS,
+		SessionSecret:  cfg.routerConfig.SessionSecret,
+		AllowOrigins:   cfg.routerConfig.AllowOrigins,
+		SentryDSN:      cfg.routerConfig.SentryDSN,
+		Env:            cfg.envName,
+		TokenProvider:  tokenProvider,
+		TenantProvider: tenantProvider,
+		DataSource:     dataSource,
 	})
 
 	router.Init()
@@ -185,14 +209,11 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 
 	mcp.Init(appInfo)
 
-	initContext := f.InitContext{
-		Config: cfg,
-		Router: router,
-		MCP:    mcp,
-	}
+	initContext.Router = router
+	initContext.MCP = mcp
 
 	for _, feature := range features {
-		feature.Init(initContext)
+		feature.OnInit(initContext)
 	}
 
 	if !mcp.IsEmpty() {
@@ -200,8 +221,18 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	}
 
 	return &appImpl{
-		router: router,
+		router:     router,
+		instanceId: instanceId,
 	}
+}
+
+func (app *appImpl) InstanceId() string {
+	return app.instanceId
+}
+
+func (app AppBuilder) WithInstanceId(id string) AppBuilder {
+	app.config.instanceId = id
+	return app
 }
 
 func (app AppBuilder) WithPublicURL(url string) AppBuilder {

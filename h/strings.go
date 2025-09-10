@@ -1,6 +1,9 @@
 package h
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 func TrimToNull(s string) *string {
 	if s == "" {
@@ -26,6 +29,12 @@ func IsNotEmpty(s *string) bool {
 func StrPtr(s string) *string {
 	return &s
 }
+func PtrStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
 
 func ToMap(input string) map[string]any {
 	values := map[string]any{}
@@ -33,4 +42,12 @@ func ToMap(input string) map[string]any {
 		return nil
 	}
 	return values
+}
+
+func StrPtrToLower(s *string) *string {
+	if s == nil {
+		return nil
+	}
+	res := strings.ToLower(*s)
+	return &res
 }

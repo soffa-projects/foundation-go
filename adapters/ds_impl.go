@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	f "github.com/soffa-projects/foundation-go/core"
 	"github.com/soffa-projects/foundation-go/h"
@@ -63,51 +64,60 @@ func (ds *MultiTenantDataSource) Init(features []f.Feature) error {
 			DatabaseUrl: ds.cfg.DatabaseUrl,
 		})
 		if err != nil {
-			panic(fmt.Sprintf("failed to initialize data source: %v", err))
+			log.Fatal("[001] failed acquire default connection: %v", err)
 		}
 		ds.tenants[_defaultTenantId] = cnx
 	}
 	ctx := context.Background()
 	if err := ds.init(ctx); err != nil {
-		log.Fatal("failed to initialize data source: %v", err)
+		log.Fatal("[002] failed to initialize data source: %v", err)
 	}
-	f.OnEvent(context.Background(), "tenant_created", func(data map[string]any) error {
-		return ds.init(ctx)
+	f.OnEvent(context.Background(), f.TenantCreatedEvent, func(data map[string]any) error {
+		tenant := data["data"].(f.Tenant)
+		return ds.initTenant(tenant)
 	})
 	return nil
 }
 
 func (ds *MultiTenantDataSource) init(ctx context.Context) error {
 	if ds.tenantProvider == nil {
-		return fmt.Errorf("tenant provider is not set")
+		log.Warn("tenant provider is not set")
+		return nil
 	}
 	tenantList, err := ds.tenantProvider.Load(ctx)
 	if err != nil {
 		return err
 	}
 	for _, tenant := range tenantList {
-		tenantId := tenant.ID
-		tenantSlug := tenant.Slug
-		if _, ok := ds.tenants[tenantId]; !ok {
-
-			dbUrl := tenant.DatabaseUrl
-			if ds.cfg.Strategy == "schema" {
-				dbUrl = h.AppendParamToUrl(ds.cfg.DatabaseUrl, "schema", tenantId)
-			}
-			cnx, err := ds.connect(f.ConnectionConfig{
-				Id:          tenantId,
-				DatabaseUrl: dbUrl,
-			})
-			log.Info("tenant %s (%s) connection initialized", tenantId, tenantSlug)
-			if err != nil {
-				return err
-			}
-			ds.tenants[tenantId] = cnx
-			ds.tenants[tenantSlug] = cnx
+		err := ds.initTenant(tenant)
+		if err != nil {
+			return err
 		}
 	}
+	return nil
+}
 
-	log.Info("multi tenant data source initialized with %d tenants", len(tenantList))
+func (ds *MultiTenantDataSource) initTenant(tenant f.Tenant) error {
+
+	tenantId := tenant.ID
+	tenantSlug := tenant.Slug
+	if _, ok := ds.tenants[tenantId]; !ok {
+
+		dbUrl := tenant.DatabaseUrl
+		if ds.cfg.Strategy == "schema" && strings.HasPrefix(ds.cfg.DatabaseUrl, "postgres://") {
+			dbUrl = h.AppendParamToUrl(ds.cfg.DatabaseUrl, "schema", tenantId)
+		}
+		cnx, err := ds.connect(f.ConnectionConfig{
+			Id:          tenantId,
+			DatabaseUrl: dbUrl,
+		})
+		if err != nil {
+			return err
+		}
+		ds.tenants[tenantId] = cnx
+		ds.tenants[tenantSlug] = cnx
+		log.Info("tenant %s (%s) connection initialized", tenantId, tenantSlug)
+	}
 
 	return nil
 }
