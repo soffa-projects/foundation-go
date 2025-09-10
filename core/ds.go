@@ -1,4 +1,4 @@
-package adapters
+package f
 
 import (
 	"context"
@@ -45,4 +45,10 @@ type DataSourceConfig struct {
 type ConnectionConfig struct {
 	Id          string
 	DatabaseUrl string
+}
+
+type EntityManager interface {
+	Default(ctx context.Context) Connection
+	Tenant(ctx context.Context, tenantId string) Connection
+	Current(ctx context.Context) Connection
 }

@@ -1,12 +1,10 @@
-package adapters
+package f
 
 import (
-	"fmt"
 	"io/fs"
-	"net/http"
-	"strings"
 
-	"github.com/soffa-projects/foundation-go/log"
+	"github.com/soffa-projects/foundation-go/errors"
+	"github.com/soffa-projects/foundation-go/h"
 )
 
 type TenantInput struct {
@@ -19,50 +17,28 @@ type TenantProviderConfig struct {
 }
 
 func TenantMiddleware(c Context) error {
-	err := detectTenant(c)
-	if err != nil {
-		return OperationError{Err: err, Code: http.StatusBadRequest}
+	if c.TenantId() == "" {
+		return errors.BadRequest("TENANT_REQUIRED_000")
 	}
 	return nil
 }
 
-func TenantOptionalMiddleware(c Context) error {
-	_ = detectTenant(c)
+func Authenticated(c Context) error {
+	if c.Auth() == nil {
+		return errors.Unauthorized("UNAUTHORIZED_000")
+	}
 	return nil
 }
 
-func detectTenant(c Context) error {
-
-	tenantId := c.TenantId()
-	if tenantId == "" {
-		tenantId = c.Param("tenant")
-	}
-	if tenantId == "" {
-		tenantId = c.QueryParam("tid")
-	}
-	if tenantId == "" {
-		tenantId = c.Header("X-TenantId")
-	}
-	if tenantId == "" {
-		tenantId = c.Host()
-	}
-	if tenantId != "" {
-		tenantProvider := Resolve[TenantProvider]()
-		if tenantProvider == nil {
-			return fmt.Errorf("TENANT_PROVIDER_NOT_SET")
+func PermissionMiddleware(permissions ...string) Middleware {
+	return func(c Context) error {
+		auth := c.Auth()
+		if auth == nil {
+			return errors.Unauthorized("UNAUTHORIZED_000")
 		}
-		tenantId = strings.ToLower(tenantId)
-		exists, err := tenantProvider.GetTenant(c, tenantId)
-		if err != nil {
-			return err
+		if !h.ContainsAnyString(permissions, auth.Permissions) {
+			return errors.Forbidden("FORBIDDEN_PERMISSION")
 		}
-		if exists == nil {
-			log.Info("invalid tenant received: %s", tenantId)
-			return fmt.Errorf("INVALID_TENANT_001")
-		}
-		c.SetTenant(exists.ID)
-	} else {
-		return fmt.Errorf("INVALID_TENANT_002")
+		return nil
 	}
-	return nil
 }

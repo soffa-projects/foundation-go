@@ -130,11 +130,11 @@ func (t *connectionImpl) configure(migrationsFS []fs.FS, prefix string) error {
 	t.db = db
 	t.dialect = dialect
 
-	var path string
+	var paths []string
 	if t.Default {
-		path = "db/migrations/shared"
+		paths = []string{"resources/db/migrations/shared", "db/migrations/shared"}
 	} else {
-		path = "db/migrations/tenant"
+		paths = []string{"resources/db/migrations/tenant", "db/migrations/tenant"}
 	}
 	changeLogTable := "database_changelog"
 	if prefix != "" {
@@ -142,8 +142,10 @@ func (t *connectionImpl) configure(migrationsFS []fs.FS, prefix string) error {
 	}
 	if len(migrationsFS) > 0 {
 		for _, dir := range migrationsFS {
-			if err := t.migrate(changeLogTable, dir, path); err != nil {
-				return err
+			for _, path := range paths {
+				if err := t.migrate(changeLogTable, dir, path); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -167,6 +169,9 @@ func (t connectionImpl) migrate(changeLogTable string, dir fs.FS, path string) e
 	// Check if there are any *.sql files in the migration directory
 	entries, err := fs.ReadDir(dir, path)
 	if err != nil {
+		return nil
+	}
+	if len(entries) == 0 {
 		return nil
 	}
 	hasSQL := false
@@ -313,8 +318,8 @@ func (t connectionImpl) FindByJoin(ctx context.Context, model f.Entity, join str
 	return false, nil
 }
 
-func (t connectionImpl) Query(ctx context.Context, model f.Entity, opts f.QueryOpts) (bool, error) {
-	return Query(ctx, t.db.NewSelect(), model, opts)
+func (t connectionImpl) Query(ctx context.Context, model f.Entity, opts ...f.QueryOpts) (bool, error) {
+	return Query(ctx, t.db.NewSelect(), model, opts...)
 }
 
 func (t connectionImpl) CountByJoin(ctx context.Context, model f.Entity, join string, where string, args ...any) (int, error) {
@@ -343,27 +348,29 @@ func countByJoin(ctx context.Context, query *bun.SelectQuery, model f.Entity, jo
 	return count, err
 }
 
-func Query(ctx context.Context, query *bun.SelectQuery, model f.Entity, opts f.QueryOpts) (bool, error) {
+func Query(ctx context.Context, query *bun.SelectQuery, model f.Entity, options ...f.QueryOpts) (bool, error) {
 	q := query.Model(model)
-	if opts.Columns != "" {
-		q = q.ColumnExpr(opts.Columns)
-	}
-	if len(opts.Joins) > 0 {
-		for _, join := range opts.Joins {
-			q = q.Join(join)
+	for _, opts := range options {
+		if opts.Columns != "" {
+			q = q.ColumnExpr(opts.Columns)
 		}
-	}
-	if opts.Where != "" {
-		q = q.Where(opts.Where, opts.Args...)
-	}
-	if opts.OrderBy != "" {
-		q = q.Order(opts.OrderBy)
-	}
-	if opts.Limit > 0 {
-		q = q.Limit(opts.Limit)
-	}
-	if opts.Offset > 0 {
-		q = q.Offset(opts.Offset)
+		if len(opts.Joins) > 0 {
+			for _, join := range opts.Joins {
+				q = q.Join(join)
+			}
+		}
+		if opts.Where != "" {
+			q = q.Where(opts.Where, opts.Args...)
+		}
+		if opts.OrderBy != "" {
+			q = q.Order(opts.OrderBy)
+		}
+		if opts.Limit > 0 {
+			q = q.Limit(opts.Limit)
+		}
+		if opts.Offset > 0 {
+			q = q.Offset(opts.Offset)
+		}
 	}
 	if err := q.Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

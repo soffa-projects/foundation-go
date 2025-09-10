@@ -1,17 +1,25 @@
-package adapters
+package f
 
 import (
 	"context"
-	"io/fs"
-
-	"github.com/soffa-projects/foundation-go/log"
 )
 
 type Entity any
 type TenantCnxKey struct{}
 type DefaultCnxKey struct{}
+type TransactionalKey struct{}
 type TenantKey struct{}
 type AuthenticationKey struct{}
+
+type QueryOpts struct {
+	Columns string
+	Joins   []string
+	Where   string
+	OrderBy string
+	Args    []any
+	Limit   int
+	Offset  int
+}
 
 type Connection interface {
 	DatabaseUrl() string
@@ -28,7 +36,7 @@ type Connection interface {
 	CountBy(ctx context.Context, model Entity, where string, args ...any) (int, error)
 	FindByJoin(ctx context.Context, model Entity, join string, where string, args ...any) (bool, error)
 	CountByJoin(ctx context.Context, model Entity, join string, where string, args ...any) (int, error)
-	Query(ctx context.Context, model Entity, opts QueryOpts) (bool, error)
+	Query(ctx context.Context, model Entity, opts ...QueryOpts) (bool, error)
 	Insert(ctx context.Context, model Entity) error
 	InsertBatch(ctx context.Context, models Entity) error
 	Update(ctx context.Context, model Entity, columns ...string) error
@@ -37,45 +45,11 @@ type Connection interface {
 	DeleteBy(ctx context.Context, model Entity, where string, args ...any) error
 }
 
-type DBManager struct {
-	ChangeLogTable string
-	MigrationsFS   []fs.FS
-}
-
-type EntityID struct {
-	ID string `bun:",pk" json:"id"`
-}
-
 // ------------------------------------------------------------------------------------------------------------------
 // TX IMPL
 // ------------------------------------------------------------------------------------------------------------------
 
-type QueryOpts struct {
-	Columns string
-	Joins   []string
-	Where   string
-	OrderBy string
-	Args    []any
-	Limit   int
-	Offset  int
-}
-
-// ------------------------------------------------------------------------------------------------------------------
-// REPOSITORY
-// ------------------------------------------------------------------------------------------------------------------
-
-type Repo struct {
-	cnx           Connection
-	Ctx           context.Context
-	DefaultTenant bool
-}
-
-func NewRepo(cnx Connection) Repo {
-	return Repo{
-		cnx: cnx,
-	}
-}
-
+/*
 func ds(ctx context.Context, defaultTenant bool) Connection {
 	var value any
 	if defaultTenant {
@@ -147,3 +121,4 @@ func (r *Repo) CountBy(ctx context.Context, model Entity, where string, args ...
 func (r *Repo) Query(ctx context.Context, model Entity, opts QueryOpts) (bool, error) {
 	return ds(ctx, r.DefaultTenant).Query(ctx, model, opts)
 }
+*/

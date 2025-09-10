@@ -10,16 +10,6 @@ import (
 	"github.com/thoas/go-funk"
 )
 
-/*
-type applicationEnvImpl struct {
-	appName    string
-	appVersion string
-	envName    string
-	production bool
-	publicURL  string
-	config     map[string]string
-}*/
-
 type builderConfig struct {
 	appName        string
 	appVersion     string
@@ -35,7 +25,7 @@ type builderConfig struct {
 	tokenProvider  *f.JwtConfig
 	dsConfig       []f.DataSourceConfig
 	tenantProvider string
-	config         map[any]string
+	config         any
 	routerConfig   f.RouterConfig
 }
 
@@ -90,9 +80,10 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	h.InitIdGenerator(0)
 
 	cfg := app.config
-	appId := f.AppID{
-		Name:    cfg.appName,
-		Version: cfg.appVersion,
+	appInfo := f.AppInfo{
+		Name:      cfg.appName,
+		Version:   cfg.appVersion,
+		PublicURL: cfg.publicURL,
 	}
 	production := h.IsProduction(cfg.envName)
 	/*env := applicationEnvImpl{
@@ -106,10 +97,8 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	features = checkFeatures(features...)
 
 	for _, feature := range features {
-		if feature.Init != nil {
-			if err := feature.Init(); err != nil {
-				log.Fatal("failed to initialize feature %s: %v", feature.Name, err)
-			}
+		if feature.Init == nil {
+			log.Fatal("feature %s has no create function", feature.Name)
 		}
 	}
 
@@ -132,7 +121,9 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 		if err := adapter.Init(features); err != nil {
 			log.Fatal("failed to initialize data source: %v", err)
 		}
+		// ds = adapter
 		f.Provide[f.DataSource](adapter)
+		f.Provide(adapters.NewEntityManagerImpl(adapter))
 	}
 	if !funk.IsEmpty(cfg.emailSender) {
 		adapter := adapters.NewEmailSender(cfg.appName, cfg.envName)
@@ -173,6 +164,7 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	}
 
 	f.Provide(adapters.NewCsrfTokenProvider())
+	f.Provide(appInfo)
 
 	router := adapters.NewEchoRouter(adapters.EchoRouterConfig{
 		Debug:         !production,
@@ -183,36 +175,27 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 		Env:           cfg.envName,
 		TokenProvider: tokenProvider,
 	})
+
 	router.Init()
+
 	mcp := adapters.NewMCPServer(f.MCPServerConfig{
 		ToolsCapabilities:   true,
 		PromptsCapabilities: false,
 	})
-	mcp.Init(appId)
 
-	enableMcp := false
+	mcp.Init(appInfo)
 
-	for _, feature := range features {
-		if feature.InitRoutes != nil {
-			feature.InitRoutes(router)
-		}
-		if feature.Operations != nil {
-			for _, operation := range feature.Operations {
-				op := operation()
-				router.AddOperation(op)
-				if op.Transport.Http.Path != "" {
-					log.Info("operation %s added to HTTP transport", op.Name)
-				}
-				if op.Transport.Mcp {
-					enableMcp = true
-					mcp.AddOperation(op)
-					log.Info("operation %s added to MCP transport", op.Name)
-				}
-			}
-		}
+	initContext := f.InitContext{
+		Config: cfg,
+		Router: router,
+		MCP:    mcp,
 	}
 
-	if enableMcp {
+	for _, feature := range features {
+		feature.Init(initContext)
+	}
+
+	if !mcp.IsEmpty() {
 		router.MCP("/mcp", mcp.HttpHandler())
 	}
 
@@ -261,6 +244,11 @@ func (app AppBuilder) WithTokenProvider(config f.JwtConfig) AppBuilder {
 	return app
 }
 
+func (app AppBuilder) WithConfig(config any) AppBuilder {
+	app.config.config = config
+	return app
+}
+
 func (app AppBuilder) WithDataSource(config ...f.DataSourceConfig) AppBuilder {
 	if len(config) == 0 {
 		app.config.dsConfig = []f.DataSourceConfig{}
@@ -272,11 +260,6 @@ func (app AppBuilder) WithDataSource(config ...f.DataSourceConfig) AppBuilder {
 
 func (app AppBuilder) WithTenantProvider(prpovider string) AppBuilder {
 	app.config.tenantProvider = prpovider
-	return app
-}
-
-func (app AppBuilder) WithConfig(key any, value string) AppBuilder {
-	app.config.config[key] = value
 	return app
 }
 

@@ -1,4 +1,4 @@
-package adapters
+package f
 
 import (
 	"context"
@@ -17,13 +17,13 @@ type RouterConfig struct {
 }
 
 type Router interface {
+	HttpRouter
 	Init()
 	Handler() http.Handler
 	Listen(port int)
 	Shutdown(ctx context.Context) error
 	MCP(path string, handler http.Handler)
 	Use(middleware Middleware)
-	AddOperation(operation Operation)
 }
 
 /*

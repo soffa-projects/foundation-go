@@ -1,3 +1,4 @@
-package adapters
+package f
 
-type ErrorReporter interface{}
+type ErrorReporter interface {
+}

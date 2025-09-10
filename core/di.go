@@ -1,4 +1,4 @@
-package adapters
+package f
 
 import (
 	"reflect"
@@ -22,14 +22,19 @@ func Provide[T any](provider T) {
 	log.Infof("[di] component registered %s", t.String())
 }
 
+type ResolveOpt struct {
+	Optional bool
+}
+
 // Resolve returns the component of type T
-func Resolve[T any]() T {
+func Lookup[T any]() *T {
 	t := reflect.TypeOf((*T)(nil)).Elem()
 
 	mu.RLock()
 	if c, ok := cache[t]; ok { // fast path (cached instance)
 		mu.RUnlock()
-		return c.(T)
+		res := c.(T)
+		return &res
 	}
 	mu.RUnlock()
 
@@ -38,16 +43,26 @@ func Resolve[T any]() T {
 
 	// check cache again in case another goroutine populated it
 	if c, ok := cache[t]; ok {
-		return c.(T)
+		res := c.(T)
+		return &res
 	}
 
 	if component, ok := registry[t]; ok {
 		cache[t] = component
-		return component.(T)
+		res := component.(T)
+		return &res
 	}
+	return nil
+}
 
-	log.Fatalf("failed to resolve component %s", t.String())
-	panic("failed to resolve component " + t.String())
+func Resolve[T any]() T {
+	res := Lookup[T]()
+	if res == nil {
+		t := reflect.TypeOf((*T)(nil)).Elem().String()
+		log.Fatalf("failed to resolve component %s", t)
+		panic("failed to resolve component " + t)
+	}
+	return *res
 }
 
 // Clear wipes out all registrations and cache

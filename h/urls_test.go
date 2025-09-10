@@ -22,3 +22,14 @@ func TestEscapeUrl(t *testing.T) {
 	output4 := UnescapeUrl(output3)
 	assert.Equal(t, output4, uri)
 }
+
+func TestIsDomainName(t *testing.T) {
+	assert.Equal(t, IsDomainName("10.0.0.1"), false)
+	assert.Equal(t, IsDomainName("localhost"), true)
+	assert.Equal(t, IsDomainName("localhost.com"), true)
+	assert.Equal(t, IsDomainName("localhost.com.br"), true)
+	assert.Equal(t, IsDomainName("localhost.com.br.br"), true)
+	assert.Equal(t, IsDomainName("localhost.com.br.br.br"), true)
+	assert.Equal(t, IsDomainName("localhost.com.br.br.br.br"), true)
+	assert.Equal(t, IsDomainName("localhost.com.br.br.br.br.br"), true)
+}

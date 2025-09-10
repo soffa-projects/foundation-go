@@ -3,7 +3,9 @@ package h
 import (
 	"fmt"
 	"html"
+	"net"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -111,4 +113,14 @@ func UnescapeUrl(input string) string {
 		return input
 	}
 	return out
+}
+
+var domainRegex = regexp.MustCompile(`^([a-zA-Z0-9-]{1,63}\.)*[a-zA-Z0-9-]{1,63}$`)
+
+func IsDomainName(input string) bool {
+	// Reject if it's a valid IP
+	if ip := net.ParseIP(input); ip != nil {
+		return false
+	}
+	return domainRegex.MatchString(input)
 }

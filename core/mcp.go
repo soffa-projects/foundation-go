@@ -1,4 +1,4 @@
-package adapters
+package f
 
 import (
 	"net/http"
@@ -10,9 +10,9 @@ type MCPServerConfig struct {
 }
 
 type MCPServer interface {
-	Init(appID AppID) error
+	McpRouter
+	Init(appID AppInfo) error
 	HttpHandler() http.Handler
-	AddOperation(operation Operation)
 }
 
 type MCPRequest interface{}
