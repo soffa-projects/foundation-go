@@ -64,16 +64,19 @@ func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 
 	if cfg.PublicFS != nil {
 
-		e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
-			Skipper: func(c echo.Context) bool {
-				path := c.Request().URL.Path
-				// Only gzip favicon and assets paths
-				return !strings.HasPrefix(path, "/assets/") && path != "/favicon.ico"
-			},
-		}))
-
 		e.FileFS("/favicon.ico", "favicon.ico", cfg.PublicFS)
-		e.StaticFS("/assets", cfg.PublicFS)
+		//e.StaticFS("/assets", cfg.PublicFS)
+
+		assets := e.Group("/assets")
+		assets.Use(middleware.Gzip())
+		assets.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				return next(c)
+			}
+		})
+		assets.StaticFS("/", cfg.PublicFS)
+
 	}
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
