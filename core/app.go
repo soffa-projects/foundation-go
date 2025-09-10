@@ -3,7 +3,6 @@ package f
 import (
 	"context"
 	"io/fs"
-	"net/http"
 )
 
 const (
@@ -59,6 +58,7 @@ type InitContext struct {
 	MCP    McpRouter
 }
 
+/*
 const (
 	StatusOK             = http.StatusOK
 	StatusCreated        = http.StatusCreated
@@ -71,6 +71,7 @@ const (
 	StatusTechnicalError = http.StatusInternalServerError
 	StatusConflict       = http.StatusConflict
 )
+*/
 
 type Context interface {
 	context.Context
