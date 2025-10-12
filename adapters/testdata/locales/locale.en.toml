@@ -1,0 +1,19 @@
+# English locale file for testing
+
+[hello]
+other = "Hello"
+
+[goodbye]
+other = "Goodbye"
+
+[welcome]
+other = "Welcome"
+
+[english_only]
+other = "English Only"
+
+[special_chars]
+other = "Special: @#$% & !?"
+
+[unicode]
+other = "Unicode: 你好 🌍"

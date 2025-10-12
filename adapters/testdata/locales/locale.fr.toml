@@ -1,0 +1,16 @@
+# French locale file for testing
+
+[hello]
+other = "Bonjour"
+
+[goodbye]
+other = "Au revoir"
+
+[welcome]
+other = "Bienvenue"
+
+[special_chars]
+other = "Spécial: @#$% & !?"
+
+[unicode]
+other = "Unicode: 你好 🌍"

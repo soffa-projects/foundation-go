@@ -1,0 +1,16 @@
+# Spanish locale file for testing
+
+[hello]
+other = "Hola"
+
+[goodbye]
+other = "Adiós"
+
+[welcome]
+other = "Bienvenido"
+
+[special_chars]
+other = "Especial: @#$% & !?"
+
+[unicode]
+other = "Unicode: 你好 🌍"
