@@ -24,11 +24,15 @@ func NewAsynqQueueProvider(redisURL string) (*AsynqQueue, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse Redis URL: %v", err)
 	}
+	db := 0
+	if cfg.HasQueryParam("db") {
+		db = int(cfg.Query("db").(int64))
+	}
 	opt := asynq.RedisClientOpt{
 		Addr:     cfg.Host,
 		Username: cfg.User,
 		Password: cfg.Password,
-		DB:       int(cfg.QueryWithDefault("db", 0).(int64)),
+		DB:       db,
 	}
 	client := asynq.NewClient(opt)
 	inspector := asynq.NewInspector(opt)

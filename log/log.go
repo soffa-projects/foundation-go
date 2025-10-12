@@ -6,6 +6,19 @@ import (
 
 // log.Debugf("downloading invoice %s", input.ID)
 
+func Init(level string) {
+	logLevel, err := log.ParseLevel(level)
+	if err == nil {
+		log.SetLevel(logLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+}
+
+func IsDebugEnabled() bool {
+	return log.GetLevel() == log.DebugLevel
+}
+
 func Debug(format string, args ...any) {
 	log.Debugf(format, args...)
 }

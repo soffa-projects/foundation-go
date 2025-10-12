@@ -26,7 +26,7 @@ func NewVaultSecretProvider(cfg h.Url) (f.SecretsProvider, error) {
 	if token == "" {
 		return nil, fmt.Errorf("[vault] token is required")
 	}
-	if mount == "" {
+	if mount == "" || mount == nil {
 		mount = "kv"
 	}
 	cache, err := ristretto.NewCache(&ristretto.Config[string, string]{
@@ -90,4 +90,9 @@ func (v VaultSecretProvider) Get(ctx context.Context, path string) (map[string]a
 
 func (v VaultSecretProvider) Put(ctx context.Context, path string, value map[string]any) error {
 	return fmt.Errorf("not implemented")
+}
+
+func (v VaultSecretProvider) Ping() error {
+	_, err := v.client.System.ReadHealthStatus(context.Background())
+	return err
 }

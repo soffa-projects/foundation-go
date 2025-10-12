@@ -26,7 +26,7 @@ type builderConfig struct {
 	emailSender         string
 	pubSubProvider      string
 	cacheProvider       string
-	secretProvider      string
+	secretProvider      f.SecretsProvider
 	errorReporter       string
 	queueProvider       string
 	tokenProvider       *f.JwtConfig
@@ -37,6 +37,7 @@ type builderConfig struct {
 	instanceId          string
 	idempotencyProvider *IdempotencyProvider
 	authProvider        f.AuthProvider
+	logLevel            string
 }
 
 type AppBuilder struct {
@@ -95,7 +96,13 @@ func New(name string, version string, envName string) AppBuilder {
 // For cases where you want initialization failures to panic, use MustInit() instead.
 func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 
+	log.Init(app.config.logLevel)
+
+	log.Info("initializing application...")
+
 	h.InitIdGenerator(0)
+
+	production := h.IsProduction(app.config.envName)
 
 	cfg := app.config
 	appInfo := f.AppInfo{
@@ -105,7 +112,6 @@ func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 	}
 	instanceId := cfg.instanceId
 
-	production := h.IsProduction(cfg.envName)
 	/*env := applicationEnvImpl{
 		appName:    app.config.appName,
 		appVersion: app.config.appVersion,
@@ -125,6 +131,7 @@ func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 		Config:     cfg.config,
 	}
 
+	log.Info("preloading features...")
 	for _, feature := range features {
 		if feature.OnInit == nil {
 			return nil, fmt.Errorf("feature %s has no create function", feature.Name)
@@ -134,6 +141,8 @@ func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 			feature.BeforeInit(initContext)
 		}
 	}
+
+	log.Info("initializing infrastructure...")
 
 	var tenantProvider f.TenantProvider
 	var tokenProvider f.TokenProvider
@@ -209,17 +218,14 @@ func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 		}
 		f.Provide(adapter)
 	}
-	if !funk.IsEmpty(cfg.secretProvider) {
-		adapter, err := adapters.NewSecretProvider(cfg.secretProvider)
-		if err != nil {
+	if cfg.secretProvider != nil {
+		if err := cfg.secretProvider.Init(); err != nil {
 			return nil, fmt.Errorf("failed to initialize secret provider: %v", err)
 		}
-		if adapter != nil {
-			if err := adapter.Init(); err != nil {
-				return nil, fmt.Errorf("failed to initialize secret provider: %v", err)
-			}
-			f.Provide(adapter)
-		}
+		f.Provide(cfg.secretProvider)
+		log.Info("secret provider initialized and registered")
+	} else {
+		log.Debug("no secret provider provided")
 	}
 	if !funk.IsEmpty(cfg.errorReporter) {
 		adapter := adapters.NewSentryErrorReporter(cfg.errorReporter, cfg.envName)
@@ -266,8 +272,10 @@ func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 	initContext.Router = router
 	initContext.MCP = mcp
 
+	log.Info("initializing features...")
 	for _, feature := range features {
 		feature.OnInit(initContext)
+		log.Info("feature %s initialized", feature.Name)
 	}
 
 	if !mcp.IsEmpty() {
@@ -334,13 +342,18 @@ func (app AppBuilder) WithIdempotencyProvider(ttl string) AppBuilder {
 	return app
 }
 
-func (app AppBuilder) WithSecretProvider(provider string) AppBuilder {
+func (app AppBuilder) WithSecretProvider(provider f.SecretsProvider) AppBuilder {
 	app.config.secretProvider = provider
 	return app
 }
 
 func (app AppBuilder) WithQueueProvider(provider string) AppBuilder {
 	app.config.queueProvider = provider
+	return app
+}
+
+func (app AppBuilder) WithLogLevel(level string) AppBuilder {
+	app.config.logLevel = level
 	return app
 }
 
