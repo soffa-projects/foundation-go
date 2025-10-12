@@ -53,3 +53,5 @@ apple_key.ts
 # Sentry Config File
 .sentryclirc
 /.idea
+/.claude
+/CLAUDE.md

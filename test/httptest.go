@@ -161,7 +161,9 @@ func (r HttpRes) GetHeader(key string, value *string) HttpRes {
 }
 
 func (r HttpRes) Print() HttpRes {
-	fmt.Printf("%+v\n", string(r.resp.Body()))
+	if testing.Verbose() { // Only print with -v flag
+		fmt.Printf("%+v\n", string(r.resp.Body()))
+	}
 	return r
 }
 

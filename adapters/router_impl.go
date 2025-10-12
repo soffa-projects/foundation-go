@@ -30,6 +30,7 @@ import (
 const _authKey = "auth"
 const _authTokenKey = "authToken"
 const _tenantIdKey = "tenantId"
+const _idemPotencyKey = "idempotencyKey"
 
 type EchoRouterConfig struct {
 	Debug          bool
@@ -40,24 +41,28 @@ type EchoRouterConfig struct {
 	Env            string
 	TokenProvider  f.TokenProvider
 	TenantProvider f.TenantProvider
+	AuthProvider   f.AuthProvider
 	DataSource     f.DataSource
 }
 
 func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 	e := echo.New()
-	e.Use(prettylogger.Logger)
-	/*
-		if cfg.Debug {
-			e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
-				LogLevel: 2,
-				LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
-					tracerr.PrintSourceColor(tracerr.Wrap(err), 1)
-					return err
-				},
-			}))
-		} else {
 
-		}*/
+	// Only use pretty logger in non-test environments for cleaner test output
+	if cfg.Env != "test" {
+		e.Use(prettylogger.Logger)
+	}
+
+	if cfg.Debug {
+		e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+			LogLevel: 1,
+			LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+				tracerr.PrintSourceColor(tracerr.Wrap(err), 3)
+				return err
+			},
+		}))
+	}
+
 	e.Use(middleware.Recover())
 	e.Use(middleware.RemoveTrailingSlash())
 	e.Use(middleware.RequestID())
@@ -97,11 +102,11 @@ func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 			Dsn:         cfg.SentryDSN,
 			Environment: cfg.Env,
 		}); err != nil {
-			log.Fatal("Sentry initialization failed: %v\n", err)
+			log.Error("Sentry initialization failed: %v\n", err)
+		} else {
+			e.Use(sentryecho.New(sentryecho.Options{}))
+			log.Info("[echo] sentry middle initialized successfully")
 		}
-
-		e.Use(sentryecho.New(sentryecho.Options{}))
-		log.Info("[echo] sentry middle initialized successfully")
 	}
 
 	// Tenant middleware
@@ -109,6 +114,7 @@ func NewEchoRouter(cfg EchoRouterConfig) f.Router {
 	return &routerImpl{
 		internal:       e,
 		tokenProvider:  cfg.TokenProvider,
+		authProvider:   cfg.AuthProvider,
 		tenantProvider: cfg.TenantProvider,
 		ds:             cfg.DataSource,
 	}
@@ -122,6 +128,7 @@ type routerImpl struct {
 	f.Router
 	internal       *echo.Echo
 	tokenProvider  f.TokenProvider
+	authProvider   f.AuthProvider
 	ds             f.DataSource
 	tenantProvider f.TenantProvider
 }
@@ -143,6 +150,8 @@ func (r *routerImpl) Init() {
 			//c.Set(_envKey, env)
 			authToken := ""
 			authz := c.Request().Header.Get("Authorization")
+			idemPotencyKey := c.Request().Header.Get("Idempotency-Key")
+			c.Set(_idemPotencyKey, idemPotencyKey)
 			if strings.HasPrefix(strings.ToLower(authz), "bearer ") {
 				authToken = authz[len("bearer "):]
 			}
@@ -161,13 +170,27 @@ func (r *routerImpl) Init() {
 			if tenantId == "" {
 				value := c.Request().Host
 				//TODO: check if it's a valid domain name
-				if h.IsDomainName(value) {
+				if h.IsDomainName(value) { //TODO: not always
 					tenantId = value
 				}
 			}
 
 			if authToken != "" {
-				if r.tokenProvider != nil {
+				// ---
+				authenticated := false
+				if r.authProvider != nil {
+					auth, err := r.authProvider.Authenticate(c.Request().Context(), authToken)
+					if err == nil && auth != nil {
+						c.Set(_authKey, auth)
+						authenticated = true
+						if auth.TenantId != "" {
+							tenantId = auth.TenantId
+						}
+					}
+					// ---
+				}
+
+				if !authenticated && r.tokenProvider != nil {
 					token, err := r.tokenProvider.Verify(authToken)
 					if err == nil {
 						sub, _ := token.Subject()
@@ -218,14 +241,15 @@ func (r *routerImpl) Handler() http.Handler {
 	return r.internal
 }
 
-func (r *routerImpl) Listen(port int) {
+func (r *routerImpl) Listen(port int) error {
 	if port == 0 {
 		port = 8080
 	}
 	err := r.internal.Start(fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.Fatal("failed to start server: %v", err)
+		return fmt.Errorf("failed to start server: %v", err)
 	}
+	return nil
 }
 
 func (r *routerImpl) Shutdown(ctx context.Context) error {
@@ -423,6 +447,14 @@ func (c *httpContextImpl) AuthToken() string {
 	return value.(string)
 }
 
+func (c *httpContextImpl) IdemPotencyKey() string {
+	value := c.internal.Get(_idemPotencyKey)
+	if value == nil {
+		return ""
+	}
+	return value.(string)
+}
+
 func (c *httpContextImpl) TenantId() string {
 	return c.internal.Get(_tenantIdKey).(string)
 }
@@ -477,23 +509,6 @@ func (c *httpContextImpl) UserAgent() string {
 	return c.internal.Request().UserAgent()
 }
 
-/*
-func (c *httpContextImpl) EM(tenantId ...string) f.Connection {
-	defaultCnx := c.Value(f.DefaultCnxKey{})
-	tenantCnx := c.Value(f.TenantCnxKey{})
-	if tenantCnx != nil {
-		if len(tenantId) > 0 && tenantId[0] == _defaultTenantId && defaultCnx != nil {
-			return defaultCnx.(f.Connection)
-		}
-		return tenantCnx.(f.Connection)
-	}
-	if defaultCnx != nil {
-		return defaultCnx.(f.Connection)
-	}
-	return nil
-}
-*/
-
 func (c *httpContextImpl) JSON(status int, data any) error {
 	return c.internal.JSON(status, data)
 }
@@ -525,7 +540,7 @@ func (c *httpContextImpl) SetTenant(tenantId string) {
 
 func formatError(ctx echo.Context, err error, code int) error {
 	status := code
-	if customError, ok := err.(errors.CustomError); ok {
+	if customError, ok := err.(*errors.CustomError); ok {
 		status = customError.Code
 	}
 	if status == 0 {
@@ -551,88 +566,3 @@ func (r *routerImpl) MCP(path string, handler http.Handler) {
 	r.internal.GET(path, wrapped)
 	r.internal.Any(path+"/*", wrapped)
 }
-
-/*
-
-func (c *operationContextImpl) Set(key any, value any) {
-	c.Context = context.WithValue(c.Context, key, value)
-}
-
-func (c *operationContextImpl) Param(value string) string {
-	return c.router.Param(value)
-}
-
-func (c *operationContextImpl) QueryParam(value string) string {
-	return c.router.QueryParam(value)
-}
-
-func (c *operationContextImpl) FormFile(field string) (io.ReadCloser, error) {
-	file, err := c.router.FormFile(field)
-	if err != nil {
-		return nil, err
-	}
-	if file == nil {
-		return nil, errors.New("err_file_required")
-	}
-	src, err := file.Open()
-	if err != nil {
-		return nil, err
-	}
-	return src, nil
-}
-
-func (c *operationContextImpl) Header(value string) string {
-	return c.router.Request().Header.Get(value)
-}
-
-func (c *operationContextImpl) Bind(input any) error {
-	err := c.ShouldBind(input)
-	return err
-}
-
-func (c *operationContextImpl) Host() string {
-	return strings.ToLower(c.router.Request().Host)
-}
-
-func (c *ctxImpl) WithValue(key, value any) f.Context {
-	return &ctxImpl{
-		Context:  context.WithValue(c.Context, key, value),
-		internal: c.internal,
-		env:      c.env,
-	}
-}
-
-func (c *operationContextImpl) TenantId() string {
-	value := c.router.Get(_tenantIdKey)
-	if value == nil {
-		return ""
-	}
-	return value.(string)
-}
-
-func (c *ctxImpl) SetSession(key string, value string, maxAge int) error {
-	sess, err := session.Get("session", c.internal)
-	if err != nil {
-		return err
-	}
-	sess.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   maxAge,
-		HttpOnly: true,
-	}
-	sess.Values[key] = value
-	return sess.Save(c.internal.Request(), c.internal.Response())
-}
-
-func (c *ctxImpl) File(data []byte, contentType string, filename string) f.HttpResponse {
-	// Return the PDF data
-	return f.HttpResponse{
-		Code:        http.StatusOK,
-		File:        true,
-		Data:        data,
-		ContentType: contentType,
-		Filename:    filename,
-	}
-}
-
-*/

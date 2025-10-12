@@ -2,7 +2,7 @@ package adapters
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -11,22 +11,29 @@ import (
 	"github.com/soffa-projects/foundation-go/log"
 )
 
-func NewCacheProvider(provider string) f.CacheProvider {
+func NewCacheProvider(provider string) (f.CacheProvider, error) {
 	if provider == "memory" {
-		return NewInMemoryCacheProvider()
+		return NewInMemoryCacheProvider(), nil
 	}
 	res, err := h.ParseUrl(provider)
 	if err != nil {
-		log.Fatal("failed to parse cache provider: %v", err)
+		return nil, fmt.Errorf("failed to parse cache provider: %v", err)
 	}
 	switch res.Scheme {
 	case "redis":
 		log.Info("using redis cache provider...")
-		return NewRedisCacheProvider(res)
+		return NewRedisCacheProvider(provider)
 	default:
-		log.Fatal("unsupported cache provider: %s", provider)
+		return nil, fmt.Errorf("unsupported cache provider: %s", provider)
 	}
-	return nil
+}
+
+func MustNewCacheProvider(provider string) f.CacheProvider {
+	cache, err := NewCacheProvider(provider)
+	if err != nil {
+		panic(err)
+	}
+	return cache
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -38,29 +45,14 @@ type RedisCacheProvider struct {
 	client *redis.Client
 }
 
-func NewRedisCacheProvider(cfg h.Url) f.CacheProvider {
-	db := 0
-	if cfg.HasQueryParam("db") {
-		db = int(cfg.Query("db").(int64))
-	}
-	if cfg.Path != "" {
-		value := strings.TrimPrefix(cfg.Path, "/")
-		db = h.ToInt(value)
-	}
-	client := redis.NewClient(&redis.Options{
-		Addr:     cfg.Host,
-		Username: cfg.User,
-		Password: cfg.Password,
-		DB:       db,
-	})
-	_, err := client.Ping(context.Background()).Result()
+func NewRedisCacheProvider(url string) (f.CacheProvider, error) {
+	client, err := NewRedisClient(url)
 	if err != nil {
-		log.Fatal("failed to ping redis: %v", err)
+		return nil, fmt.Errorf("failed to create Redis client: %v", err)
 	}
-	log.Info("redis connection successful")
 	return &RedisCacheProvider{
 		client: client,
-	}
+	}, nil
 }
 
 func (p *RedisCacheProvider) Init() error {

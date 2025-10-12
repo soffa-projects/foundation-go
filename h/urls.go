@@ -54,6 +54,13 @@ func (u Url) Query(key string) any {
 	return u.query[key]
 }
 
+func (u Url) QueryWithDefault(key string, defaultValue any) any {
+	if _, ok := u.query[key]; ok {
+		return u.query[key]
+	}
+	return defaultValue
+}
+
 func RemoveParamFromUrl(input string, param string) (string, error) {
 	u, err := url.Parse(input)
 	if err != nil {

@@ -8,7 +8,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func LoadEnv(cfg any) {
+// LoadEnv loads environment variables from .env file (if not in production) and processes them into cfg.
+// Returns an error if environment variable processing fails.
+func LoadEnv(cfg any) error {
 	env := os.Getenv("ENV")
 	if env != "production" && env != "prod" {
 		err := godotenv.Load(".env")
@@ -18,6 +20,15 @@ func LoadEnv(cfg any) {
 	}
 	err := envconfig.Process("", cfg)
 	if err != nil {
-		log.Fatal(err)
+		return err
+	}
+	return nil
+}
+
+// MustLoadEnv is a convenience wrapper around LoadEnv that panics on error.
+// Use this only in main() or initialization code where panic is acceptable.
+func MustLoadEnv(cfg any) {
+	if err := LoadEnv(cfg); err != nil {
+		panic(err)
 	}
 }

@@ -2,7 +2,9 @@ package h
 
 import (
 	"encoding/json"
+	"reflect"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/soffa-projects/foundation-go/log"
 )
 
@@ -22,6 +24,10 @@ type Map struct {
 
 func NewMapWithValues(values map[string]any) Map {
 	return Map{values: values}
+}
+
+func DecodeMap(input any, output any) error {
+	return mapstructure.Decode(input, output)
 }
 
 func NewMap(input string) Map {
@@ -68,4 +74,16 @@ func (m Map) GetInt(key string) int {
 func (m Map) Set(key string, value any) Map {
 	m.values[key] = value
 	return m
+}
+
+func IsMap(value any) bool {
+	switch value.(type) {
+	case map[string]string, map[string]any, map[int]string:
+		return true
+	default:
+		if reflect.TypeOf(value).Kind() == reflect.Map {
+			return true
+		}
+		return false
+	}
 }

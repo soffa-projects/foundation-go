@@ -1,26 +1,34 @@
 package adapters
 
 import (
+	"fmt"
+
 	f "github.com/soffa-projects/foundation-go/core"
 	"github.com/soffa-projects/foundation-go/h"
-	"github.com/soffa-projects/foundation-go/log"
 )
 
-func NewSecretProvider(provider string) f.SecretsProvider {
+func NewSecretProvider(provider string) (f.SecretsProvider, error) {
 	if provider == "" {
-		return nil
+		return nil, nil
 	}
 	cfg, err := h.ParseUrl(provider)
 	if err != nil {
-		log.Fatal("failed to parse secret provider: %v", err)
+		return nil, fmt.Errorf("failed to parse secret provider: %v", err)
 	}
 	switch cfg.Scheme {
 	case "vault+https", "vault+http":
 		return NewVaultSecretProvider(cfg)
 	case "faker":
-		return NewFakeSecretProvider()
+		return NewFakeSecretProvider(), nil
 	default:
-		log.Fatal("unsupported secret provider: %s", cfg.Scheme)
+		return nil, fmt.Errorf("unsupported secret provider: %s", cfg.Scheme)
 	}
-	return nil
+}
+
+func MustNewSecretProvider(provider string) f.SecretsProvider {
+	secret, err := NewSecretProvider(provider)
+	if err != nil {
+		panic(err)
+	}
+	return secret
 }

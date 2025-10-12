@@ -42,6 +42,9 @@ func ValidateDatabaseUrl(databaseUrl string) (bool, error) {
 		return false, fmt.Errorf("invalid database url: %s", databaseUrl)
 	}
 
+	// FIXED: Close the database connection to prevent resource leak
+	defer sqldb.Close()
+
 	err = sqldb.Ping()
 
 	return err == nil, err

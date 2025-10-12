@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/go-redis/redis/v8"
 	f "github.com/soffa-projects/foundation-go/core"
@@ -10,10 +11,10 @@ import (
 	"github.com/soffa-projects/foundation-go/log"
 )
 
-func NewPubSubProvider(provider string) f.PubSubProvider {
+func NewPubSubProvider(provider string) (f.PubSubProvider, error) {
 	res, err := h.ParseUrl(provider)
 	if err != nil {
-		log.Fatal("failed to parse pubsub provider: %v", err)
+		return nil, fmt.Errorf("failed to parse pubsub provider: %v", err)
 	}
 	switch res.Scheme {
 	case "redis":
@@ -21,11 +22,18 @@ func NewPubSubProvider(provider string) f.PubSubProvider {
 		return NewRedisPubSubProvider(res)
 	case "fake", "faker", "dummy":
 		log.Info("using fake pubsub provider...")
-		return NewFakePubSubProvider()
+		return NewFakePubSubProvider(), nil
 	default:
-		log.Fatal("unsupported pubsub provider: %s", provider)
+		return nil, fmt.Errorf("unsupported pubsub provider: %s", provider)
 	}
-	return nil
+}
+
+func MustNewPubSubProvider(provider string) f.PubSubProvider {
+	pubsub, err := NewPubSubProvider(provider)
+	if err != nil {
+		panic(err)
+	}
+	return pubsub
 }
 
 // ------------------------------------------------------------------------------------------------------------------
@@ -37,7 +45,7 @@ type RedisPubSubProvider struct {
 	client *redis.Client
 }
 
-func NewRedisPubSubProvider(cfg h.Url) f.PubSubProvider {
+func NewRedisPubSubProvider(cfg h.Url) (f.PubSubProvider, error) {
 	db := 0
 	if cfg.HasQueryParam("db") {
 		db = int(cfg.Query("db").(int64))
@@ -50,12 +58,12 @@ func NewRedisPubSubProvider(cfg h.Url) f.PubSubProvider {
 	})
 	_, err := client.Ping(context.Background()).Result()
 	if err != nil {
-		log.Fatal("failed to ping redis: %v", err)
+		return nil, fmt.Errorf("failed to ping redis: %v", err)
 	}
 	log.Info("redis connection successful")
 	return &RedisPubSubProvider{
 		client: client,
-	}
+	}, nil
 }
 
 func (p *RedisPubSubProvider) Init() error {

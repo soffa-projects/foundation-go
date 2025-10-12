@@ -17,7 +17,7 @@ type i18nImpl struct {
 	localizer *i18n.Localizer
 }
 
-func NewLocalizer(localesFS fs.FS, supportedLocales string) f.I18n {
+func NewLocalizer(localesFS fs.FS, supportedLocales string) (f.I18n, error) {
 	bundle := i18n.NewBundle(language.French)
 	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
 
@@ -26,15 +26,22 @@ func NewLocalizer(localesFS fs.FS, supportedLocales string) f.I18n {
 		localFile := fmt.Sprintf("locales/locale.%s.toml", lang)
 		_, err := bundle.LoadMessageFileFS(localesFS, localFile)
 		if err != nil {
-			log.Fatal("unable to load locale file %s", localFile)
-			panic(err)
+			return nil, fmt.Errorf("unable to load locale file %s: %v", localFile, err)
 		}
 	}
 	localizer := i18n.NewLocalizer(bundle, locales...)
 	log.Info("%d locales loaded", len(locales))
 	return &i18nImpl{
 		localizer: localizer,
+	}, nil
+}
+
+func MustNewLocalizer(localesFS fs.FS, supportedLocales string) f.I18n {
+	localizer, err := NewLocalizer(localesFS, supportedLocales)
+	if err != nil {
+		panic(err)
 	}
+	return localizer
 }
 
 func (i *i18nImpl) T(messageId string, args ...any) string {

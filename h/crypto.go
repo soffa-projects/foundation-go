@@ -57,12 +57,12 @@ func GenerateOAuth2Credentials(clientIDLength, clientSecretLength int) (string, 
 	return clientID, clientSecret, nil
 }
 
-func HashPassword(password string) string {
+func HashPassword(password string) (string, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return string(hashedPassword)
+	return string(hashedPassword), nil
 }
 
 func ComparePassword(password, hash string) bool {

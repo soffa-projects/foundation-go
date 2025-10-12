@@ -11,7 +11,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	f "github.com/soffa-projects/foundation-go/core"
 	"github.com/soffa-projects/foundation-go/h"
-	"github.com/soffa-projects/foundation-go/log"
 )
 
 type defaultJwtProvider struct {
@@ -22,7 +21,7 @@ type defaultJwtProvider struct {
 	secretKey string
 }
 
-func NewTokenProvider(cfg f.JwtConfig) f.TokenProvider {
+func NewTokenProvider(cfg f.JwtConfig) (f.TokenProvider, error) {
 
 	var privkey jwk.Key
 	var pubkey jwk.Key
@@ -30,12 +29,12 @@ func NewTokenProvider(cfg f.JwtConfig) f.TokenProvider {
 	if cfg.JwkPrivateBase64 != "" {
 		privateKeyBytes, err := base64.StdEncoding.DecodeString(cfg.JwkPrivateBase64)
 		if err != nil {
-			log.Fatal("failed to decode private key: %s\n", err)
+			return nil, fmt.Errorf("failed to decode private key: %s", err)
 		}
 
 		publicKeyBytes, err := base64.StdEncoding.DecodeString(cfg.JwkPublicBase64)
 		if err != nil {
-			log.Fatal("failed to decode public key: %s\n", err)
+			return nil, fmt.Errorf("failed to decode public key: %s", err)
 		}
 
 		privateKeyPEM := stripPEMHeaders(string(privateKeyBytes))
@@ -43,11 +42,11 @@ func NewTokenProvider(cfg f.JwtConfig) f.TokenProvider {
 
 		privkey, err = jwk.ParseKey([]byte(privateKeyPEM))
 		if err != nil {
-			log.Fatal("failed to parse JWK: %s\n", err)
+			return nil, fmt.Errorf("failed to parse JWK: %s", err)
 		}
 		pubkey, err = jwk.ParseKey([]byte(publicKeyPEM))
 		if err != nil {
-			log.Fatal("failed to get public key: %s\n", err)
+			return nil, fmt.Errorf("failed to get public key: %s", err)
 		}
 	}
 	return &defaultJwtProvider{
@@ -55,7 +54,15 @@ func NewTokenProvider(cfg f.JwtConfig) f.TokenProvider {
 		pubkey:    pubkey,
 		issuer:    cfg.Issuer,
 		secretKey: cfg.SecretKey,
+	}, nil
+}
+
+func MustNewTokenProvider(cfg f.JwtConfig) f.TokenProvider {
+	provider, err := NewTokenProvider(cfg)
+	if err != nil {
+		panic(err)
 	}
+	return provider
 }
 
 func stripPEMHeaders(pemString string) string {

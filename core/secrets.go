@@ -5,8 +5,9 @@ import "context"
 const SecretProviderKey = "secrets"
 
 type SecretsProvider interface {
+	Ping() error
 	Init() error
 	Close() error
-	Get(ctx context.Context, tenantId string, key string) (any, error)
-	GetObject(ctx context.Context, tenantId string, key string) (map[string]any, error)
+	Get(ctx context.Context, path string) (map[string]any, error)
+	Put(ctx context.Context, path string, value map[string]any) error
 }

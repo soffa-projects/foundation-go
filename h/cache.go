@@ -14,7 +14,7 @@ func DefaultCache() Cache {
 		return defaultCache
 	}
 
-	defaultCache = NewCache()
+	defaultCache = MustNewCache()
 	return defaultCache
 }
 
@@ -29,18 +29,30 @@ type cacheImpl struct {
 	internal *ristretto.Cache[string, any]
 }
 
-func NewCache() Cache {
+// NewCache creates a new cache instance and returns an error if initialization fails.
+// For cases where you want initialization failures to panic, use MustNewCache() instead.
+func NewCache() (Cache, error) {
 	internal, err := ristretto.NewCache(&ristretto.Config[string, any]{
 		NumCounters: 1000,
 		MaxCost:     1000,
 		BufferItems: 64,
 	})
 	if err != nil {
-		log.Fatal("failed to create cache: %v", err)
+		return nil, err
 	}
 	return &cacheImpl{
 		internal: internal,
+	}, nil
+}
+
+// MustNewCache is a convenience wrapper around NewCache that panics on error.
+// Use this only in initialization code where panic is acceptable.
+func MustNewCache() Cache {
+	cache, err := NewCache()
+	if err != nil {
+		panic(err)
 	}
+	return cache
 }
 
 func (c *cacheImpl) Get(key string) (any, bool) {

@@ -20,7 +20,7 @@ type Router interface {
 	HttpRouter
 	Init()
 	Handler() http.Handler
-	Listen(port int)
+	Listen(port int) error
 	Shutdown(ctx context.Context) error
 	MCP(path string, handler http.Handler)
 	Use(middleware Middleware)
@@ -67,6 +67,7 @@ type Authentication struct {
 	Permissions []string
 	Email       string
 	TenantId    string
+	Subject     any
 }
 
 type MiddlewareType int

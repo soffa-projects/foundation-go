@@ -37,3 +37,8 @@ func FromJsonString(source string, target any) error {
 	}
 	return nil
 }
+
+func IsJson(value any) bool {
+	_, err := json.Marshal(value)
+	return err == nil
+}

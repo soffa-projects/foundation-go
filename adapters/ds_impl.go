@@ -64,13 +64,13 @@ func (ds *MultiTenantDataSource) Init(features []f.Feature) error {
 			DatabaseUrl: ds.cfg.DatabaseUrl,
 		})
 		if err != nil {
-			log.Fatal("[001] failed acquire default connection: %v", err)
+			return fmt.Errorf("[001] failed acquire default connection: %v", err)
 		}
 		ds.tenants[_defaultTenantId] = cnx
 	}
 	ctx := context.Background()
 	if err := ds.init(ctx); err != nil {
-		log.Fatal("[002] failed to initialize data source: %v", err)
+		return fmt.Errorf("[002] failed to initialize data source: %v", err)
 	}
 	f.OnEvent(context.Background(), f.TenantCreatedEvent, func(data map[string]any) error {
 		tenant := data["data"].(f.Tenant)

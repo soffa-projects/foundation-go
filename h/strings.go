@@ -3,6 +3,8 @@ package h
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/thoas/go-funk"
 )
 
 func TrimToNull(s string) *string {
@@ -19,12 +21,12 @@ func TrimToEmpty(s *string) string {
 	return *s
 }
 
-func IsEmpty(s *string) bool {
-	return s == nil || *s == ""
+func IsEmpty(s interface{}) bool {
+	return funk.IsEmpty(s)
 }
 
-func IsNotEmpty(s *string) bool {
-	return s != nil && *s != ""
+func IsNotEmpty(s interface{}) bool {
+	return !funk.IsEmpty(s)
 }
 func StrPtr(s string) *string {
 	return &s

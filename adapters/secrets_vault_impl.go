@@ -3,7 +3,6 @@ package adapters
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -16,30 +15,19 @@ import (
 
 type VaultSecretProvider struct {
 	f.SecretsProvider
-	path   string
 	mount  string
 	cache  *ristretto.Cache[string, string]
 	client *vault.Client
 }
 
-func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
+func NewVaultSecretProvider(cfg h.Url) (f.SecretsProvider, error) {
 	token := cfg.User
-	p := cfg.Query("path")
 	mount := cfg.Query("mount")
 	if token == "" {
-		log.Fatal("[vault] token is required")
-	}
-	if p == "" {
-		log.Fatal("[vault] path is required")
-		decodedValue, err := url.QueryUnescape(p.(string))
-		if err != nil {
-			log.Fatal("[vault] failed to decode path: %v", err)
-		}
-		p = decodedValue
-
+		return nil, fmt.Errorf("[vault] token is required")
 	}
 	if mount == "" {
-		log.Fatal("[vault] mount is required")
+		mount = "kv"
 	}
 	cache, err := ristretto.NewCache(&ristretto.Config[string, string]{
 		NumCounters: 100,    // number of keys to track frequency of (10M).
@@ -47,7 +35,7 @@ func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
 		BufferItems: 64,     // number of keys per Get buffer.
 	})
 	if err != nil {
-		log.Fatal("[vault] failed to create cache: %v", err)
+		return nil, fmt.Errorf("[vault] failed to create cache: %v", err)
 	}
 
 	address := fmt.Sprintf("%s://%s", strings.TrimPrefix(cfg.Scheme, "vault+"), cfg.Host)
@@ -59,16 +47,22 @@ func NewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
 		err = client.SetToken(token)
 	}
 	if err != nil {
-		log.Fatal("[vault] failed to create client: %v", err)
-	} else {
-		log.Info("[vault] secret provider installed")
+		return nil, fmt.Errorf("[vault] failed to create client: %v", err)
 	}
+	log.Info("[vault] secret provider installed")
 	return VaultSecretProvider{
 		mount:  mount.(string),
-		path:   p.(string),
 		cache:  cache,
 		client: client,
+	}, nil
+}
+
+func MustNewVaultSecretProvider(cfg h.Url) f.SecretsProvider {
+	provider, err := NewVaultSecretProvider(cfg)
+	if err != nil {
+		panic(err)
 	}
+	return provider
 }
 
 func (v VaultSecretProvider) Init() error {
@@ -80,26 +74,20 @@ func (v VaultSecretProvider) Close() error {
 	return nil
 }
 
-func (v VaultSecretProvider) Get(ctx context.Context, tenantId string, key string) (any, error) {
-
-	secretPath := strings.ReplaceAll(v.path, "__tenant__", tenantId)
-	val := h.DefaultCache().GetOrSet(fmt.Sprintf("vault:%s:%s", secretPath, key), func() (any, error) {
-		s, err := v.client.Secrets.KvV2Read(ctx, secretPath, vault.WithMountPath(v.mount))
+func (v VaultSecretProvider) Get(ctx context.Context, path string) (map[string]any, error) {
+	val := h.DefaultCache().GetOrSet(fmt.Sprintf("vault:%s", path), func() (any, error) {
+		s, err := v.client.Secrets.KvV2Read(ctx, path, vault.WithMountPath(v.mount))
 		if err != nil {
-			return nil, fmt.Errorf("[vault] failed to retrieve secret: %s, %v", secretPath, err)
+			return nil, fmt.Errorf("[vault] failed to retrieve secret: %s, %v", path, err)
 		}
-		return s.Data.Data[key], nil
+		return s.Data.Data, nil
 	})
 	if val == nil {
-		return nil, fmt.Errorf("[vault] failed to retrieve secret: %s", key)
+		return nil, fmt.Errorf("[vault] failed to retrieve secret: %s", path)
 	}
-	return val, nil
+	return val.(map[string]any), nil
 }
 
-func (v VaultSecretProvider) GetObject(ctx context.Context, tenantId string, key string) (map[string]any, error) {
-	value, err := v.Get(ctx, tenantId, key)
-	if err != nil {
-		return nil, err
-	}
-	return value.(map[string]any), err
+func (v VaultSecretProvider) Put(ctx context.Context, path string, value map[string]any) error {
+	return fmt.Errorf("not implemented")
 }

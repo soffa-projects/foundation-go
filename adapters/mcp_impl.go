@@ -6,14 +6,13 @@ import (
 	"net/http"
 
 	"github.com/invopop/jsonschema"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	f "github.com/soffa-projects/foundation-go/core"
 )
 
 type mcpServerImpl struct {
 	f.MCPServer
-	internal *server.MCPServer
+	internal *mcp.Server
 	cfg      f.MCPServerConfig
 	tools    int
 }
@@ -28,17 +27,27 @@ func NewMCPServer(cfg f.MCPServerConfig) f.MCPServer {
 }
 
 func (s *mcpServerImpl) Init(appID f.AppInfo) error {
-	s.internal = server.NewMCPServer(
-		appID.Name,
-		appID.Version,
-		server.WithToolCapabilities(s.cfg.ToolsCapabilities),
-		server.WithPromptCapabilities(s.cfg.PromptsCapabilities),
+	// Create MCP server with implementation details
+	// Note: Official SDK auto-detects capabilities from registered tools/prompts
+	s.internal = mcp.NewServer(
+		&mcp.Implementation{
+			Name:    appID.Name,
+			Version: appID.Version,
+		},
+		nil, // ServerOptions - use defaults
 	)
 	return nil
 }
 
 func (s *mcpServerImpl) HttpHandler() http.Handler {
-	return server.NewStreamableHTTPServer(s.internal)
+	return mcp.NewStreamableHTTPHandler(
+		func(req *http.Request) *mcp.Server {
+			return s.internal
+		},
+		&mcp.StreamableHTTPOptions{
+			JSONResponse: true, // Return JSON instead of SSE for easier testing
+		},
+	)
 }
 
 func (s *mcpServerImpl) IsEmpty() bool {
@@ -46,33 +55,96 @@ func (s *mcpServerImpl) IsEmpty() bool {
 }
 
 func (s *mcpServerImpl) Add(op f.MCP) {
-	var t mcp.Tool
+	// Create tool definition
+	tool := &mcp.Tool{
+		Name:        op.Name,
+		Description: op.Desc,
+	}
+
+	// Add input schema if provided
 	if op.InputSchema != nil {
 		schema := reflector.Reflect(op.InputSchema)
 		jsonSchema, _ := json.MarshalIndent(schema, "", "  ")
-		t = mcp.NewToolWithRawSchema(op.Name, op.Desc, jsonSchema)
-	} else {
-		t = mcp.NewTool(op.Name, mcp.WithDescription(op.Desc))
+		var schemaMap map[string]any
+		json.Unmarshal(jsonSchema, &schemaMap)
+		tool.InputSchema = schemaMap
 	}
-	s.internal.AddTool(t, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		c := &mcpOperationContextImpl{}
-		res, err := op.Handle(c)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return res.(*mcp.CallToolResult), nil
-	})
+
+	// Register tool with type-safe handler
+	// Using map[string]any for dynamic input since we don't know the exact type at compile time
+	mcp.AddTool(s.internal, tool,
+		func(ctx context.Context, req *mcp.CallToolRequest, input map[string]any) (*mcp.CallToolResult, any, error) {
+			// Create MCP context for the handler
+			c := &mcpOperationContextImpl{ctx: ctx}
+
+			// Call the user's handler
+			res, err := op.Handle(c)
+			if err != nil {
+				// Return error as tool result
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						&mcp.TextContent{
+							Text: "Error: " + err.Error(),
+						},
+					},
+					IsError: true,
+				}, nil, nil
+			}
+
+			// Handle different result types
+			switch v := res.(type) {
+			case *mcp.CallToolResult:
+				return v, nil, nil
+			case string:
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						&mcp.TextContent{
+							Text: v,
+						},
+					},
+				}, nil, nil
+			default:
+				// For structured data, serialize to JSON
+				return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						&mcp.TextContent{
+							Text: "Result: " + string(mustJSON(v)),
+						},
+					},
+				}, v, nil
+			}
+		},
+	)
 	s.tools++
 }
 
 type mcpOperationContextImpl struct {
 	f.Context
+	ctx context.Context
 }
 
 func (r *mcpOperationContextImpl) Structured(data any) any {
-	return mcp.NewToolResultStructured(data, "")
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: string(mustJSON(data)),
+			},
+		},
+	}
 }
 
 func (r *mcpOperationContextImpl) Text(data string) any {
-	return mcp.NewToolResultText(data)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{
+				Text: data,
+			},
+		},
+	}
+}
+
+// Helper function to marshal JSON
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }

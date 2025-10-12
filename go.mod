@@ -13,16 +13,18 @@ require (
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-resty/resty/v2 v2.16.5
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/gookit/event v1.2.0
 	github.com/gorilla/sessions v1.4.0
 	github.com/hashicorp/vault-client-go v0.4.3
+	github.com/hibiken/asynq v0.25.1
 	github.com/invopop/jsonschema v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/labstack/echo-contrib v0.17.4
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/lestrrat-go/jwx/v3 v3.0.10
-	github.com/mark3labs/mcp-go v0.39.1
+	github.com/modelcontextprotocol/go-sdk v1.0.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/onsi/gomega v1.38.2
 	github.com/panta/go-json-matcher v0.9.1
@@ -80,6 +82,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/jsonschema-go v0.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/goutil v0.7.1 // indirect
 	github.com/gorilla/context v1.1.2 // indirect
@@ -106,7 +109,9 @@ require (
 	github.com/natefinch/atomic v1.0.1 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
+	github.com/redis/go-redis/v9 v9.7.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
@@ -134,6 +139,7 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
+	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mellium.im/sasl v0.3.2 // indirect

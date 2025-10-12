@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"sync/atomic"
 	"time"
-	"unsafe"
 )
 
 var generator *ShortIDGenerator
@@ -37,11 +36,6 @@ func NewShortIDGenerator(machineID int) *ShortIDGenerator {
 		timeOffset: timeOffset,
 		buffer:     make([]byte, 8),
 	}
-}
-
-// byteSliceToString converts a byte slice to a string without allocation
-func byteSliceToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
 }
 
 // Generate creates a new 8-character ID
@@ -88,7 +82,9 @@ func (g *ShortIDGenerator) Generate() string {
 		combined /= 36
 	}
 
-	return byteSliceToString(g.buffer)
+	// FIXED: Create new string from buffer instead of unsafe pointer
+	// This ensures each ID has its own memory and prevents duplicates
+	return string(g.buffer)
 }
 
 // NewId generates a new ID with optional prefix

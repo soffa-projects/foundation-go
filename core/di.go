@@ -1,6 +1,7 @@
 package f
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 
@@ -55,14 +56,26 @@ func Lookup[T any]() *T {
 	return nil
 }
 
-func Resolve[T any]() T {
+// Resolve returns the component of type T, or error if not found
+// FIXED: Returns error instead of calling log.Fatal
+func Resolve[T any]() (T, error) {
 	res := Lookup[T]()
 	if res == nil {
+		var zero T
 		t := reflect.TypeOf((*T)(nil)).Elem().String()
-		log.Fatalf("failed to resolve component %s", t)
-		panic("failed to resolve component " + t)
+		return zero, fmt.Errorf("failed to resolve component %s", t)
 	}
-	return *res
+	return *res, nil
+}
+
+// MustResolve returns the component of type T, or panics if not found
+// Use this only in initialization code where panic is acceptable
+func MustResolve[T any]() T {
+	res, err := Resolve[T]()
+	if err != nil {
+		panic(err)
+	}
+	return res
 }
 
 // Clear wipes out all registrations and cache

@@ -11,7 +11,7 @@ const (
 )
 
 type App interface {
-	Start(port int)
+	Start(port int) error
 	Shutdown(ctx context.Context)
 	Router() Router
 	InstanceId() string
@@ -82,6 +82,7 @@ type Context interface {
 	TenantId() string
 	Auth() *Authentication
 	AuthToken() string
+	IdemPotencyKey() string
 	SetTenant(tenantId string)
 	RemoteAddr() string
 }

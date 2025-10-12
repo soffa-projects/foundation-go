@@ -2,32 +2,41 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"time"
 
-	"github.com/soffa-projects/foundation-go/adapters"
+	adapters "github.com/soffa-projects/foundation-go/adapters"
 	f "github.com/soffa-projects/foundation-go/core"
 	"github.com/soffa-projects/foundation-go/h"
 	"github.com/soffa-projects/foundation-go/log"
 	"github.com/thoas/go-funk"
 )
 
+type IdempotencyProvider struct {
+	ttl string
+}
+
 type builderConfig struct {
-	appName        string
-	appVersion     string
-	envName        string
-	sessionSecret  string
-	publicURL      string
-	i18n           *f.LocalesConfig
-	emailSender    string
-	pubSubProvider string
-	cacheProvider  string
-	secretProvider string
-	errorReporter  string
-	tokenProvider  *f.JwtConfig
-	dsConfig       []f.DataSourceConfig
-	tenantProvider string
-	config         any
-	routerConfig   f.RouterConfig
-	instanceId     string
+	appName             string
+	appVersion          string
+	envName             string
+	sessionSecret       string
+	publicURL           string
+	i18n                *f.LocalesConfig
+	emailSender         string
+	pubSubProvider      string
+	cacheProvider       string
+	secretProvider      string
+	errorReporter       string
+	queueProvider       string
+	tokenProvider       *f.JwtConfig
+	dsConfig            []f.DataSourceConfig
+	tenantProvider      string
+	config              any
+	routerConfig        f.RouterConfig
+	instanceId          string
+	idempotencyProvider *IdempotencyProvider
+	authProvider        f.AuthProvider
 }
 
 type AppBuilder struct {
@@ -40,13 +49,16 @@ type appImpl struct {
 	instanceId string
 }
 
-func (app *appImpl) Start(port int) {
+func (app *appImpl) Start(port int) error {
 	defer func() {
 		app.Shutdown(context.Background())
 	}()
 
 	log.Info("starting webserver...")
-	app.router.Listen(port)
+	if err := app.router.Listen(port); err != nil {
+		return fmt.Errorf("failed to start server: %v", err)
+	}
+	return nil
 }
 
 func (app *appImpl) Router() f.Router {
@@ -79,7 +91,9 @@ func New(name string, version string, envName string) AppBuilder {
 	}
 }
 
-func (app AppBuilder) Init(features []f.Feature) f.App {
+// Init initializes the application with the given features and returns an error if initialization fails.
+// For cases where you want initialization failures to panic, use MustInit() instead.
+func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 
 	h.InitIdGenerator(0)
 
@@ -100,7 +114,11 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 		publicURL:  cfg.publicURL,
 	}*/
 
-	features = checkFeatures(features...)
+	orderedFeatures, err := checkFeatures(features...)
+	if err != nil {
+		return nil, err
+	}
+	features = orderedFeatures
 
 	initContext := f.InitContext{
 		InstanceId: instanceId,
@@ -109,7 +127,7 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 
 	for _, feature := range features {
 		if feature.OnInit == nil {
-			log.Fatal("feature %s has no create function", feature.Name)
+			return nil, fmt.Errorf("feature %s has no create function", feature.Name)
 		}
 		// Preload singletons here
 		if feature.BeforeInit != nil {
@@ -122,11 +140,18 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	var dataSource f.DataSource
 
 	if !funk.IsEmpty(cfg.i18n) {
-		adapter := adapters.NewLocalizer(cfg.i18n.LocaleFS, cfg.i18n.Locales)
+		adapter, err := adapters.NewLocalizer(cfg.i18n.LocaleFS, cfg.i18n.Locales)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize localizer: %v", err)
+		}
 		f.Provide(adapter)
 	}
 	if !funk.IsEmpty(cfg.tenantProvider) {
-		tenantProvider = adapters.NewTenantProvider(cfg.tenantProvider)
+		adapter, err := adapters.NewTenantProvider(cfg.tenantProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize tenant provider: %v", err)
+		}
+		tenantProvider = adapter
 		f.Provide(tenantProvider)
 	} else {
 		adapter := f.Lookup[f.TenantProvider]()
@@ -140,7 +165,7 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 			adapter.UseTenantProvider(tenantProvider)
 		}
 		if err := adapter.Init(features); err != nil {
-			log.Fatal("[000] failed to initialize wMultiTenantDS: %v", err)
+			return nil, fmt.Errorf("[000] failed to initialize wMultiTenantDS: %v", err)
 		}
 		// ds = adapter
 		dataSource = adapter
@@ -148,40 +173,68 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 		f.Provide(adapters.NewEntityManagerImpl(adapter))
 	}
 	if !funk.IsEmpty(cfg.emailSender) {
-		adapter := adapters.NewEmailSender(cfg.appName, cfg.emailSender)
+		adapter, err := adapters.NewEmailSender(cfg.appName, cfg.emailSender)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize email sender: %v", err)
+		}
 		f.Provide(adapter)
 	}
 	if !funk.IsEmpty(cfg.pubSubProvider) {
-		adapter := adapters.NewPubSubProvider(cfg.pubSubProvider)
+		adapter, err := adapters.NewPubSubProvider(cfg.pubSubProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize pubsub provider: %v", err)
+		}
 		if err := adapter.Init(); err != nil {
-			log.Fatal("failed to initialize pubsub provider: %v", err)
+			return nil, fmt.Errorf("failed to initialize pubsub provider: %v", err)
 		}
 		f.Provide(adapter)
 	}
 	if !funk.IsEmpty(cfg.cacheProvider) {
-		adapter := adapters.NewCacheProvider(cfg.cacheProvider)
+		adapter, err := adapters.NewCacheProvider(cfg.cacheProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize cache provider: %v", err)
+		}
 		if err := adapter.Init(); err != nil {
-			log.Fatal("failed to initialize cache provider: %v", err)
+			return nil, fmt.Errorf("failed to initialize cache provider: %v", err)
+		}
+		f.Provide(adapter)
+
+		idempotencyStore := adapters.NewIdempotencyStore(adapter, 1*time.Hour)
+		f.Provide(idempotencyStore)
+	}
+	if !funk.IsEmpty(cfg.queueProvider) {
+		adapter, err := adapters.NewAsynqQueueProvider(cfg.queueProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize queue provider: %v", err)
 		}
 		f.Provide(adapter)
 	}
 	if !funk.IsEmpty(cfg.secretProvider) {
-		adapter := adapters.NewSecretProvider(cfg.secretProvider)
-		if err := adapter.Init(); err != nil {
-			log.Fatal("failed to initialize secret provider: %v", err)
+		adapter, err := adapters.NewSecretProvider(cfg.secretProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize secret provider: %v", err)
 		}
-		f.Provide(adapter)
+		if adapter != nil {
+			if err := adapter.Init(); err != nil {
+				return nil, fmt.Errorf("failed to initialize secret provider: %v", err)
+			}
+			f.Provide(adapter)
+		}
 	}
 	if !funk.IsEmpty(cfg.errorReporter) {
 		adapter := adapters.NewSentryErrorReporter(cfg.errorReporter, cfg.envName)
 		f.Provide(adapter)
 	}
 	if !funk.IsEmpty(cfg.tokenProvider) {
-		tokenProvider = adapters.NewTokenProvider(f.JwtConfig{
+		adapter, err := adapters.NewTokenProvider(f.JwtConfig{
 			Issuer:           cfg.appName,
 			JwkPrivateBase64: cfg.tokenProvider.JwkPrivateBase64,
 			JwkPublicBase64:  cfg.tokenProvider.JwkPublicBase64,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize token provider: %v", err)
+		}
+		tokenProvider = adapter
 		f.Provide(tokenProvider)
 	}
 
@@ -198,6 +251,7 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 		TokenProvider:  tokenProvider,
 		TenantProvider: tenantProvider,
 		DataSource:     dataSource,
+		AuthProvider:   cfg.authProvider,
 	})
 
 	router.Init()
@@ -223,7 +277,17 @@ func (app AppBuilder) Init(features []f.Feature) f.App {
 	return &appImpl{
 		router:     router,
 		instanceId: instanceId,
+	}, nil
+}
+
+// MustInit is a convenience wrapper around Init that panics on error.
+// Use this only in main() or initialization code where panic is acceptable.
+func (app AppBuilder) MustInit(features []f.Feature) f.App {
+	result, err := app.Init(features)
+	if err != nil {
+		panic(err)
 	}
+	return result
 }
 
 func (app *appImpl) InstanceId() string {
@@ -237,6 +301,11 @@ func (app AppBuilder) WithInstanceId(id string) AppBuilder {
 
 func (app AppBuilder) WithPublicURL(url string) AppBuilder {
 	app.config.publicURL = url
+	return app
+}
+
+func (app AppBuilder) WithAuthProvider(authProvider f.AuthProvider) AppBuilder {
+	app.config.authProvider = authProvider
 	return app
 }
 
@@ -260,8 +329,18 @@ func (app AppBuilder) WithCacheProvider(provider string) AppBuilder {
 	return app
 }
 
+func (app AppBuilder) WithIdempotencyProvider(ttl string) AppBuilder {
+	app.config.idempotencyProvider = &IdempotencyProvider{ttl: ttl}
+	return app
+}
+
 func (app AppBuilder) WithSecretProvider(provider string) AppBuilder {
 	app.config.secretProvider = provider
+	return app
+}
+
+func (app AppBuilder) WithQueueProvider(provider string) AppBuilder {
+	app.config.queueProvider = provider
 	return app
 }
 
@@ -304,15 +383,15 @@ func (app AppBuilder) WithRouterConfig(cfg f.RouterConfig) AppBuilder {
 	return app
 }
 
-func checkFeatures(features ...f.Feature) []f.Feature {
+func checkFeatures(features ...f.Feature) ([]f.Feature, error) {
 	featureMap := make(map[string]bool, len(features))
 	loadedFeatures := []f.Feature{}
 	for _, f := range features {
 		if f.Name == "" {
-			log.Fatal("feature name is required")
+			return nil, fmt.Errorf("feature name is required")
 		}
 		if _, ok := featureMap[f.Name]; ok {
-			log.Fatal("feature name %s is already registered", f.Name)
+			return nil, fmt.Errorf("feature name %s is already registered", f.Name)
 		}
 		featureMap[f.Name] = true
 		loadedFeatures = append(loadedFeatures, f)
@@ -329,7 +408,7 @@ func checkFeatures(features ...f.Feature) []f.Feature {
 	return orderFeatures(loadedFeatures)
 }
 
-func orderFeatures(features []f.Feature) []f.Feature {
+func orderFeatures(features []f.Feature) ([]f.Feature, error) {
 	// Map features by name for quick lookup
 	featureMap := make(map[string]f.Feature, len(features))
 	indegree := make(map[string]int, len(features)) // number of dependencies
@@ -368,7 +447,7 @@ func orderFeatures(features []f.Feature) []f.Feature {
 
 		feat, ok := featureMap[name]
 		if !ok {
-			log.Fatal("unknown feature: %s", name)
+			return nil, fmt.Errorf("unknown feature: %s", name)
 		}
 		ordered = append(ordered, feat)
 
@@ -383,8 +462,8 @@ func orderFeatures(features []f.Feature) []f.Feature {
 
 	// Check for cycles
 	if len(ordered) != len(features) {
-		log.Fatal("cyclic dependency detected - %v  / %v", len(ordered), len(features))
+		return nil, fmt.Errorf("cyclic dependency detected - %v / %v", len(ordered), len(features))
 	}
 
-	return ordered
+	return ordered, nil
 }

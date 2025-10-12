@@ -149,26 +149,33 @@ func parseEmailMessage(msg *f.EmailMessage) error {
 	return nil
 }
 
-func NewEmailSender(senderName string, provider string) f.EmailSender {
+func NewEmailSender(senderName string, provider string) (f.EmailSender, error) {
 	cfg, err := h.ParseUrl(provider)
 	if err != nil {
-		log.Fatal("failed to parse email provider: %v", err)
+		return nil, fmt.Errorf("failed to parse email provider: %v", err)
 	}
 	sender := cfg.Query("from")
 	if sender == "" {
 		sender := cfg.Query("sender")
 		if sender == "" {
-			log.Fatal("sender is required")
+			return nil, fmt.Errorf("sender is required")
 		}
 	}
 
 	fullSender := fmt.Sprintf("%s <%s>", senderName, sender)
 	switch cfg.Scheme {
 	case "resend":
-		return newResendEmailProvider(cfg.User, fullSender)
+		return newResendEmailProvider(cfg.User, fullSender), nil
 	case "faker":
-		return newFakeEmailProvider("", fullSender)
+		return newFakeEmailProvider("", fullSender), nil
 	}
-	log.Fatal("unsupported email provider: %s", cfg.Scheme)
-	return nil
+	return nil, fmt.Errorf("unsupported email provider: %s", cfg.Scheme)
+}
+
+func MustNewEmailSender(senderName string, provider string) f.EmailSender {
+	sender, err := NewEmailSender(senderName, provider)
+	if err != nil {
+		panic(err)
+	}
+	return sender
 }
