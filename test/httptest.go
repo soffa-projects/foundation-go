@@ -82,6 +82,18 @@ func (c *RestClient) Post(path string, opts ...HttpReq) HttpRes {
 	return c.invoke("POST", path, opts...)
 }
 
+func (c *RestClient) Put(path string, opts ...HttpReq) HttpRes {
+	return c.invoke("PUT", path, opts...)
+}
+
+func (c *RestClient) Patch(path string, opts ...HttpReq) HttpRes {
+	return c.invoke("PATCH", path, opts...)
+}
+
+func (c *RestClient) Delete(path string, opts ...HttpReq) HttpRes {
+	return c.invoke("DELETE", path, opts...)
+}
+
 func (c *RestClient) SetBearerAuth(token string) *RestClient {
 	c.bearer = token
 	return c
