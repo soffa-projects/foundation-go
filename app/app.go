@@ -236,6 +236,7 @@ func (app AppBuilder) Init(features []f.Feature) (f.App, error) {
 			Issuer:           cfg.appName,
 			JwkPrivateBase64: cfg.tokenProvider.JwkPrivateBase64,
 			JwkPublicBase64:  cfg.tokenProvider.JwkPublicBase64,
+			SecretKey:        cfg.tokenProvider.SecretKey,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize token provider: %v", err)
