@@ -156,14 +156,12 @@ func (r *routerImpl) Init() {
 				authToken = authz[len("bearer "):]
 			}
 
-			tenantId := ""
+			tenantId := c.Param("tenant")
 
-			if tenantId == "" {
-				tenantId = c.Param("tenant")
-			}
 			if tenantId == "" {
 				tenantId = c.QueryParam("tid")
 			}
+
 			if tenantId == "" {
 				tenantId = c.Request().Header.Get("X-TenantId")
 			}
@@ -477,7 +475,10 @@ func (c *httpContextImpl) Host() string {
 
 func (c *httpContextImpl) Bind(value any) error {
 	err := c.ShouldBind(value)
-	return err
+	if err != nil {
+		panic(err)
+	}
+	return nil
 }
 
 func (c *httpContextImpl) ShouldBind(input any) error {
