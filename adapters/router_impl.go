@@ -544,6 +544,9 @@ func formatError(ctx echo.Context, err error, code int) error {
 	if customError, ok := err.(*errors.CustomError); ok {
 		status = customError.Code
 	}
+	if echoError, ok := err.(*echo.HTTPError); ok {
+		status = echoError.Code
+	}
 	if status == 0 {
 		status = http.StatusInternalServerError
 	}
