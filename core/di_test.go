@@ -268,7 +268,7 @@ func TestProvide_WithNilValue(t *testing.T) {
 
 	// Provide nil - type assertion will panic when Lookup tries to retrieve it
 	var nilService TestService
-	Provide[TestService](nilService)
+	Provide(nilService)
 
 	// Lookup will panic due to type assertion on nil interface
 	defer func() {

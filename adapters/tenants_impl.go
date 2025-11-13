@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,11 @@ import (
 )
 
 func NewTenantProvider(provider string) (f.TenantProvider, error) {
+	if strings.HasPrefix(provider, "base64:") {
+		log.Info("using base64 tenant provider: %s", provider)
+		return NewBase64TenantProvider(strings.TrimPrefix(provider, "base64:")), nil
+	}
+
 	res, err := h.ParseUrl(provider)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse tenant provider: %v", err)
@@ -166,6 +172,52 @@ func (tp HttpTenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, err
 }
 
 func (tp HttpTenantProvider) GetTenant(ctx context.Context, id string) (*f.Tenant, error) {
+	if tenant, ok := tp.tenants[id]; ok {
+		return &tenant, nil
+	}
+	return nil, nil
+}
+
+// ------------------------------------------------------------------------------------------------------------------
+// BASE64 TENANT PROVIDER IMPL
+// ------------------------------------------------------------------------------------------------------------------
+
+type Base64TenantProvider struct {
+	f.TenantProvider
+	tenants map[string]f.Tenant
+}
+
+func NewBase64TenantProvider(cfg string) f.TenantProvider {
+	tenants := f.TenantList{}
+	decoded, err := base64.StdEncoding.DecodeString(cfg)
+	if err != nil {
+		log.Fatal("failed to decode base64: %v", err)
+	}
+	if err := json.Unmarshal(decoded, &tenants); err != nil {
+		log.Fatal("failed to unmarshal tenants: %v", err)
+	}
+	tenantsMap := make(map[string]f.Tenant)
+	for _, tenant := range tenants.Tenants {
+		tenantsMap[tenant.ID] = tenant
+	}
+	return &Base64TenantProvider{
+		tenants: tenantsMap,
+	}
+}
+
+func (tp *Base64TenantProvider) Load(ctx context.Context) ([]f.Tenant, error) {
+	return tp.GetTenantList(ctx)
+}
+
+func (tp *Base64TenantProvider) GetTenantList(ctx context.Context) ([]f.Tenant, error) {
+	tenants := []f.Tenant{}
+	for _, tenant := range tp.tenants {
+		tenants = append(tenants, tenant)
+	}
+	return tenants, nil
+}
+
+func (tp *Base64TenantProvider) GetTenant(ctx context.Context, id string) (*f.Tenant, error) {
 	if tenant, ok := tp.tenants[id]; ok {
 		return &tenant, nil
 	}
